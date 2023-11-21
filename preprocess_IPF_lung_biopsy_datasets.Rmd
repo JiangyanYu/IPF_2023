@@ -1,0 +1,596 @@
+---
+title: "scRNA datasets from IPF lung tissue"
+author: "Jiangyan Yu (jiangyan.yu@uni-bonn.de)"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+notes: 
+1) integrate all cells from IPF project with control cells from Kevin's COPD paper
+
+
+# general steps
+
+```{r global_options}
+knitr::opts_chunk$set(warning=FALSE, messgae=FALSE, fig.path='Figs/', results = "hide")
+## fig.width=4, fig.height=4
+```
+
+## load library
+
+```{r include=FALSE}
+rm(list=ls())
+gc()
+#CRAN packages
+list.of.packages <- c("readr",
+                      "cowplot",
+                      "useful",
+                      "stringr",
+                      "umap",
+                      "ggplot2",
+                      "reshape2",
+                      "dplyr",
+                      "tidyr",
+                      "Matrix.utils",
+                      "VGAM",
+                      "plotly",
+                      "future",
+                      "data.table"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)>0) install.packages(new.packages)
+
+#BioconductoR packages
+list.of.bioc.packages <- c("tximport",
+                           "DESeq2",
+                           "Seurat",
+                           "slingshot",
+                           "flowCore",
+                           "biomaRt",
+                           "clusterProfiler",
+                           "org.Hs.eg.db",
+                           "org.Mm.eg.db",
+                           "GSEABase",
+                           "DOSE",
+                           "BiocGenerics",
+                           "DelayedArray",
+                           "DelayedMatrixStats",
+                           "limma",
+                           "S4Vectors",
+                           "SingleCellExperiment",
+                           "SummarizedExperiment",
+                           "batchelor")
+                           # "annotables")
+new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
+# 
+if(length(new.packages.bioc)>0)if (!requireNamespace("BiocManager")) install.packages("BiocManager")
+BiocManager::install(new.packages.bioc, update = FALSE)
+
+lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
+
+rm(list.of.bioc.packages,list.of.packages,new.packages,new.packages.bioc)
+```
+
+## parallel computing
+
+multicore does not work in rstudio. better to use plan::multiprocess
+
+```{r include=FALSE}
+
+library(parallel)
+# nworkers <- detectCores()
+# print(paste("bootstrapping using parLapply, fork cluster, and", nworkers, "workers"))
+# cl <- makeForkCluster(nworkers-1)
+# clusterSetRNGStream(cl, 1001) #make the bootstrapping exactly the same as above to equate computation time
+
+cl <- makeCluster(8)
+doParallel::registerDoParallel(cl)
+#change the current plan to access seurat parallelization
+plan("multiprocess", workers = detectCores()-1)
+options(future.globals.maxSize = 20000 * 1024^2)
+```
+
+## working directory
+
+```{r}
+## Linux directory
+system.dir = "/home/jyu/rstudio/"
+working.dir = paste0(system.dir,"/Projects/Miscellaneous/Morse_IPF/")
+published_data_dir = paste0(system.dir,"/general_scripts/publised_datasets/")
+global_ref_dir = paste0(system.dir,"/general_scripts/Global_ref_data/")
+gsea_pathway_dir = paste0(system.dir,"/general_scripts/Global_ref_data/")
+
+## Mac directory
+# working.dir = "/Users/jiangyanyu/sciebo/Projects/IPF_ownerJY/"
+# global_ref_dir = "/Users/jiangyanyu/sciebo/general_scripts/Global_ref_data/"
+
+source(paste0(global_ref_dir,"general_functions.R"))
+
+
+```
+
+# Adams
+
+```{r}
+# Adam_meta = read.csv(file = paste0(working.dir,"/GSE136831_AllCells.Samples.CellType.MetadataTable.txt"),sep = "\t")
+# rownames(Adam_meta) = Adam_meta$CellBarcode_Identity
+# Adam_meta = subset(Adam_meta,Manuscript_Identity == "Macrophage" |Manuscript_Identity == "Macrophage_Alveolar")
+# Adam_meta = subset(Adam_meta, Disease_Identity!="COPD")
+# 
+# counts = readMM(paste0(working.dir,"/GSE136831_matrix.mtx.gz"))
+# 
+# #> dim(counts)
+# #[1]  45947 312928
+# 
+# features = data.table::fread(file = paste0(working.dir,"/GSE136831_features.tsv.gz"))
+# cells = data.table::fread(file = paste0(working.dir,"/GSE136831_barcodes.tsv.gz"), header = FALSE)
+# rownames(counts) = features$HGNC_EnsemblAlt_GeneID
+# colnames(counts) = cells$V1
+# 
+# counts1 = counts[,colnames(counts) %in% rownames(Adam_meta)]
+# #> dim(counts1)
+# #[1]  45947 152538
+# 
+# rm(counts)
+# Adam_mac = CreateSeuratObject(counts = counts1,meta.data = Adam_meta)
+# rm(counts1, Adam_meta, cells,features)
+# 
+# saveRDS(Adam_mac,file = paste0(working.dir,"/Adam_mac_counts.rds"))
+```
+
+# Morse et al
+3 upper lobe, 3 lower lobe
+
+<!-- ## read in counts -->
+
+<!-- ```{r} -->
+<!-- file_names = list.files(path = "/home/yu.j/Downloads/GSE128033_RAW/") -->
+<!-- file_names = file_names[file_names %like% "barcodes"] -->
+<!-- file_names = str_replace(string = file_names,pattern = "_barcodes.tsv.gz",replacement = "") -->
+
+<!-- ## dont take the bal samples -->
+
+<!-- file_names = file_names[! file_names %like% "bal"] -->
+
+<!-- ## first check if genes are the same -->
+
+<!-- genes = fread(paste0("/home/yu.j/Downloads/GSE128033_RAW/",file_names[1],"_genes.tsv.gz")) -->
+
+<!-- for (i in file_names[2:length(file_names)]){ -->
+<!--   tmp = fread(paste0("/home/yu.j/Downloads/GSE128033_RAW/",i,"_genes.tsv.gz")) -->
+<!--   all.equal(genes,tmp) %>% print() -->
+
+<!-- } -->
+
+<!-- rm(i,genes,tmp) -->
+
+<!-- ## all identical -->
+
+<!-- morse_counts = matrix() -->
+
+<!-- for (i in c(1:length(file_names))){ -->
+<!--   file = file_names[i] -->
+
+<!--   genes = fread(paste0("/home/yu.j/Downloads/GSE128033_RAW/",file,"_genes.tsv.gz"),header = FALSE) -->
+<!--   barcodes = fread(paste0("/home/yu.j/Downloads/GSE128033_RAW/",file,"_barcodes.tsv.gz"),header = FALSE) -->
+<!--   barcodes$cell = paste0(str_split_fixed(file,"_",2)[2],"_",barcodes$V1) -->
+<!--   matrix = readMM(paste0("/home/yu.j/Downloads/GSE128033_RAW/",file,"_matrix.mtx.gz")) -->
+
+<!--   colnames(matrix) = barcodes$cell -->
+<!--   rownames(matrix) = genes$V2 -->
+
+<!--   ### only select cells with colsum > 100 -->
+<!--   matrix = matrix[,colSums(matrix)>500] -->
+
+<!--   print(paste0(file,"dim:",dim(matrix))) -->
+
+<!--   if (i==1){ -->
+<!--     morse_counts = matrix -->
+<!--   }else{ -->
+<!--     morse_counts = cbind(morse_counts,matrix) -->
+<!--   } -->
+<!-- } -->
+
+<!-- rm(i, file, genes, barcodes, matrix,file_names) -->
+
+
+<!-- morse = CreateSeuratObject(counts = morse_counts) -->
+<!-- ``` -->
+
+
+<!-- ## basic qc -->
+
+<!-- ```{r} -->
+<!-- DefaultAssay(morse) = "RNA" -->
+<!-- morse[["percent.mt"]] <- PercentageFeatureSet(morse, pattern = "^MT-") -->
+<!-- # Visualize QC metrics as a violin plot -->
+<!-- VlnPlot(morse, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,pt.size = 0) -->
+
+
+<!-- summary(morse$nCount_RNA) -->
+<!-- summary(morse$nFeature_RNA) -->
+<!-- ``` -->
+
+<!-- ## run seurat -->
+
+<!-- ```{r} -->
+<!-- morse <- NormalizeData(morse, normalization.method = "LogNormalize", scale.factor = 10000) -->
+<!-- morse <- NormalizeData(morse) -->
+<!-- morse <- FindVariableFeatures(morse, selection.method = "vst", nfeatures = 2000) -->
+
+<!-- # Identify the 10 most highly variable genes -->
+<!-- top10 <- head(VariableFeatures(morse), 10) -->
+
+<!-- # plot variable features with and without labels -->
+<!-- plot1 <- VariableFeaturePlot(morse) -->
+<!-- plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE) -->
+<!-- plot1 + plot2 -->
+
+<!-- all.genes <- rownames(morse) -->
+<!-- morse <- ScaleData(morse, features = all.genes) -->
+
+<!-- morse <- RunPCA(morse, features = VariableFeatures(object = morse)) -->
+
+<!-- # Examine and visualize PCA results a few different ways -->
+<!-- print(morse[["pca"]], dims = 1:5, nfeatures = 5) -->
+
+<!-- DimPlot(morse, reduction = "pca") -->
+
+<!-- # NOTE: This process can take a long time for big datasets, comment out for expediency. More -->
+<!-- # approximate techniques such as those implemented in ElbowPlot() can be used to reduce -->
+<!-- # computation time -->
+<!-- morse <- JackStraw(morse, num.replicate = 100) -->
+<!-- morse <- ScoreJackStraw(morse, dims = 1:20) -->
+
+<!-- JackStrawPlot(morse, dims = 1:15) -->
+<!-- ElbowPlot(morse) -->
+
+
+<!-- morse <- FindNeighbors(morse, dims = 1:30) -->
+<!-- morse <- FindClusters(morse, resolution = 0.5) -->
+
+<!-- # If you haven't installed UMAP, you can do so via reticulate::py_install(packages = -->
+<!-- # 'umap-learn') -->
+<!-- morse <- RunUMAP(morse, dims = 1:10) -->
+
+<!-- # note that you can set `label = TRUE` or use the LabelClusters function to help label -->
+<!-- # individual clusters -->
+<!-- DimPlot(morse, reduction = "umap") -->
+<!-- ``` -->
+
+<!-- ## select macrophages -->
+
+<!-- ```{r} -->
+<!-- morse = readRDS("/home/yu.j/Downloads/Morse_IPF/morse.rds") -->
+
+<!-- DotPlot(morse,features = c("SPP1","CD68","MARCO","FABP4","VCAN")) -->
+
+<!-- DimPlot(morse,label = FALSE,split.by = "orig.ident",ncol = 4) -->
+<!-- ``` -->
+
+<!-- ## subset 5k cells  -->
+<!-- ```{r} -->
+<!-- ### degs for each cluster -->
+<!-- morse = readRDS(paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/morse.rds")) -->
+<!-- morse_mac = subset(morse,ident = c(0,1,8,16)) -->
+<!-- saveRDS(morse_mac,file = "/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/morse_mac.rds") -->
+
+<!-- morse_deg = FindAllMarkers(more) -->
+<!-- write.csv(morse_deg, file=paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/morse_deg.csv")) -->
+<!-- write.csv(morse@meta.data, file=paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/morse_metadata.csv")) -->
+
+<!-- ### subset 5k cells for visulization -->
+
+<!-- morse_5k = morse[,sample(x=colnames(morse),size=5000)] -->
+<!-- saveRDS(morse_5k, file = paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/morse_5k.rds")) -->
+
+<!-- ## use Travaglni to annotate all populations -->
+
+<!-- morse_mac = subset(morse,ident = c(0,1,8,16)) -->
+<!-- saveRDS(morse_mac,file = "/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/morse_mac.rds") -->
+
+
+<!-- DotPlot(morse_5k,features = c("MARCO","FABP4","MRC1","VCAN","CD14","FCGR3A","MKI67","SPP1","TREM2")) -->
+
+<!-- VlnPlot(tmp_seurat,features = "travagliniMacrophage1") -->
+<!-- ``` -->
+
+<!-- ## Travaglini -->
+
+<!-- tableS4, SS2 means smart-seq2 sequencing -->
+
+<!-- use 10x clusters for cross-check -->
+
+<!-- ```{r} -->
+<!-- tmp_sheet = readxl::excel_sheets(path = paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/","Travaglini_41586_2020_2922_MOESM6_ESM.xlsx")) -->
+<!-- tmp_type = data.frame("cluster" = NA,"name"=NA, "sheet" =NA) -->
+
+<!-- tmp_seurat = morse_5k -->
+
+<!-- for(i in c(1:length(tmp_sheet))){ -->
+<!--   travaglini_deg = readxl::read_xlsx(path = paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/","Travaglini_41586_2020_2922_MOESM6_ESM.xlsx"), -->
+<!--                              sheet = tmp_sheet[i],col_names = FALSE) -->
+<!--   tmp_type[i,1] = i -->
+<!--   tmp_type[i,2] = travaglini_deg[1,1] -->
+<!--   tmp_type[i,3] = tmp_sheet[i] -->
+
+<!--   if(!tmp_sheet[i] %like% "SS2" ){ -->
+<!--     colnames(travaglini_deg) = travaglini_deg[2,] -->
+<!--     travaglini_deg = travaglini_deg[c(3:nrow(travaglini_deg)),] -->
+<!--     travaglini_deg$avg_logFC = as.numeric(travaglini_deg$avg_logFC) -->
+<!--     travaglini_deg = subset(travaglini_deg,avg_logFC>1) -->
+
+<!--       tmp_seurat = AddModuleScore(object = tmp_seurat, -->
+<!--                                features = list(travaglini_deg$Gene), -->
+<!--                                ctrl = 5, -->
+<!--                                assay = "RNA", -->
+<!--                                name = paste0("travaglini",tmp_type[i,2]) -->
+<!--                                ) -->
+
+<!--   }else if(tmp_sheet[i] == "Cluster 43 (SS2)"){ -->
+<!--     colnames(travaglini_deg) = travaglini_deg[2,] -->
+<!--     travaglini_deg = travaglini_deg[c(3:nrow(travaglini_deg)),] -->
+<!--     travaglini_deg$avg_logFC = as.numeric(travaglini_deg$avg_logFC) -->
+<!--     travaglini_deg = subset(travaglini_deg,avg_logFC>1) -->
+
+<!--       tmp_seurat = AddModuleScore(object = tmp_seurat, -->
+<!--                                features = list(travaglini_deg$Gene), -->
+<!--                                ctrl = 5, -->
+<!--                                assay = "RNA", -->
+<!--                                name = paste0("travaglini",tmp_type[i,2]) -->
+<!--                                ) -->
+<!--   } -->
+
+<!-- } -->
+
+<!-- write.csv(tmp_seurat@meta.data,file=paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/","travaglini_clusters_prediction_score.csv")) -->
+
+<!-- ``` -->
+
+<!-- ## Travaglini annotation -->
+
+<!-- prediction score is from addmodulescore -->
+
+<!-- ```{r} -->
+<!-- travaglini_prediction = read.csv(file=paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/","travaglini_clusters_prediction_score.csv")) -->
+<!-- tmp_prediction = colnames(travaglini_prediction)[colnames(travaglini_prediction) %like% "travaglini"] -->
+
+<!-- tmp_data = cbind(travaglini_prediction$seurat_clusters,travaglini_prediction[,c(tmp_prediction)]) -->
+
+
+<!-- colnames(tmp_data)[1] = "seurat_clusters" -->
+<!-- # tmp_data$seurat_clusters = paste0("cluster",tmp_data$seurat_clusters) -->
+
+<!-- tmp_data = tmp_data%>% -->
+<!--   group_by(seurat_clusters)%>%  -->
+<!--   summarise(across(tmp_prediction, mean)) %>%  -->
+<!--   as.data.frame() -->
+<!-- rownames(tmp_data) = tmp_data$seurat_clusters -->
+<!-- tmp_data = tmp_data[,-1] -->
+
+<!-- colnames(tmp_data) = str_replace(colnames(tmp_data),pattern = "travaglini","") -->
+<!-- colnames(tmp_data) = str_replace_all(colnames(tmp_data),pattern = "\\."," ") -->
+<!-- colnames(tmp_data) = str_sub(colnames(tmp_data), 1, str_length(colnames(tmp_data))-1) -->
+
+
+<!-- # tmp_data = tmp_data[c("6:S100A11+Mac","10:TNFAIP6+Mac","8:CXCL10+Mac","11:NEAT1+Mac","7:MKI67+Mac","13:MKI67+Mac","20:MKI67+Mac","4_1:RNASE1+Mac","4_2:SPP1+Mac","4_0:VCAN+Mac","25:Monocyte","17:DC","19:pDC","22:Eosinophil","21:Mast","12:Neutrophil","5:Tcell", "9:Tcell","14:NK","15:Goblet", "16:Ciliated", "24:Epithelial"), -->
+<!-- #                     c("Macrophage","Intermediate Monocyte","Myeloid Dendritic Type 1","Plasmacytoid Dendritic","Basophil Mast 1","Neutrophil","CD4  Naive T","Natural Killer T","Goblet","Ciliated" ,"Alveolar Epithelial Type 2" )] -->
+
+<!-- pdf(file = paste0("/home/jyu/rstudio/Projects/Miscellaneous/Morse_IPF/","figs1.singleliver.travaglini_",".pdf"),width = 8,height =8) -->
+
+<!-- col_fun = circlize::colorRamp2(c(-4, 0, 4), c("#a8dadc","white","#9d0208")) -->
+
+<!-- ht1 = ComplexHeatmap::Heatmap(scale(tmp_data), -->
+<!--                         name = "Scaled prediction score", -->
+<!--                         col = col_fun, -->
+<!--                         cluster_rows = FALSE, -->
+<!--                         cluster_columns = FALSE, -->
+<!--                         row_names_side = "left", -->
+<!--                         column_names_side = "top", -->
+<!--                         row_title = "Clusters from present study", -->
+<!--                         column_title = "Clusters from Travaglini et al", -->
+<!--                         heatmap_legend_param = list(color_bar = "continuous", legend_direction = "horizontal", -->
+<!--                                                     legend_width = unit(4, "cm")) -->
+<!--                         ) -->
+<!-- ComplexHeatmap::draw(ht1, heatmap_legend_side = "bottom") -->
+
+<!-- dev.off() -->
+<!-- rm(tmp_prediction,tmp_data,col_fun,ht1,travaglini_prediction) -->
+<!-- ``` -->
+
+# Haberman
+
+GSE135893
+
+```{r}
+# counts = readMM(paste0(working.dir,"/GSE135893_matrix.mtx.gz"))
+# 
+# #> dim(counts)
+# #[1]  33694 220213
+# 
+# features = data.table::fread(file = paste0(working.dir,"/GSE135893_genes.tsv.gz"),header = FALSE)
+# cells = data.table::fread(file = paste0(working.dir,"/GSE135893_barcodes.tsv.gz"), header = FALSE)
+# rownames(counts) = features$V1
+# colnames(counts) = cells$V1
+# 
+# Haberman_meta = data.table::fread(file = paste0(working.dir,"/GSE135893_IPF_metadata.csv.gz"))
+# Haberman_meta = subset(Haberman_meta,celltype == "Macrophages" |celltype == "Proliferating Macrophages")
+# 
+# ## select only IPF and control
+# Haberman_meta = subset(Haberman_meta, Diagnosis == "Control" | Diagnosis == "IPF")
+# 
+# rownames(Haberman_meta) = Haberman_meta$V1
+# 
+# 
+# counts1 = counts[,colnames(counts) %in% rownames(Haberman_meta)]
+# #> dim(counts1)
+# #[1]  33694 29524
+# 
+# rm(counts)
+# Haberman_mac = CreateSeuratObject(counts = counts1,meta.data = Haberman_meta)
+# rm(counts1, Haberman_meta, cells,features)
+# 
+# saveRDS(Haberman_mac,file = paste0(working.dir,"/Haberman_mac_counts.rds"))
+```
+
+# integrate 4 datasets
+
+## merge datasets
+```{r}
+Adam_mac  = readRDS(file = paste0(working.dir,"/Adam_mac_counts.rds"))
+Morse_mac = readRDS(file = paste0(working.dir,"/morse_mac.rds"))
+Haberman_mac = readRDS(file = paste0(working.dir,"/Haberman_mac_counts.rds"))
+Yu_mac = readRDS(paste0(working.dir,"run1to4_ck_ipf_n_copd_ck_rpca_subcluster_singlelivemac.rds"))
+
+Adam_mac@meta.data = Adam_mac@meta.data[,c(1:3)]
+Morse_mac@meta.data = Morse_mac@meta.data[,c(1:3)]
+Haberman_mac@meta.data = Haberman_mac@meta.data[,c(1:3)]
+Yu_mac@meta.data = Yu_mac@meta.data[,c(1:3)]
+
+Adam_mac$dataset = "Adam"
+Morse_mac$dataset = "Morse"
+Haberman_mac$dataset = "Haberman"
+Yu_mac$dataset = "Yu"
+
+## merge all seurat objects
+
+lung_IPF_mac_list = merge(x=Adam_mac,y=list(Morse_mac,Haberman_mac,Yu_mac),add.cell.ids = c("Adam","Morse","Haberman","Yu"))
+
+rm(Adam_mac,Morse_mac,Haberman_mac,Yu_mac)
+
+# lung_IPF_mac_list = readRDS(paste0(working.dir,"lung_IPF_mac_list.rds"))
+
+batch_list = SplitObject(lung_IPF_mac_list,split.by = "dataset")
+
+print("find integration features...")
+## use SCT transformation
+## Note that this single command replaces NormalizeData(), ScaleData(), and FindVariableFeatures().
+batch_list <- lapply(X = batch_list, FUN = function(x) {
+  x <- NormalizeData(x, verbose = FALSE)
+  x <- FindVariableFeatures(x, verbose = FALSE)
+})
+
+features <- SelectIntegrationFeatures(object.list = batch_list)
+# saveRDS(lung_IPF_mac_list,paste0(working.dir,"lung_IPF_mac_list.rds"))
+saveRDS(features,paste0(working.dir,"features.rds"))
+```
+
+## scale
+
+```{r}
+# batch_list <- lapply(X = batch_list, FUN = function(x) {
+#   x <- ScaleData(x, features = features, verbose = FALSE)
+#   x <- RunPCA(x, features = features, verbose = FALSE)
+# })
+# saveRDS(batch_list,paste0(working.dir,"batch_list.rds"))
+```
+
+## anchor
+
+```{r}
+
+# ### find anchors using rpca
+print("find anchors and integrate data...")
+# batch_list = readRDS(paste0(working.dir,"batch_list.rds"))
+# features = readRDS(paste0(working.dir,"features.rds"))
+batch_anchors <- FindIntegrationAnchors(object.list = batch_list, reduction = "rpca",anchor.features = features,
+                                        dims = 1:50)
+# saveRDS(batch_anchors,paste0(working.dir,"batch_anchors.rds"))
+
+# batch_anchors = readRDS("/home/jyu/rstudio/batch_anchors.rds")
+
+lung_IPF_mac_rpca <- IntegrateData(anchorset = batch_anchors, dims = 1:50)
+# saveRDS(lung_IPF_mac_rpca,paste0(working.dir,"lung_IPF_mac_rpca_noumap.rds"))
+
+rm(batch_list, features, batch_anchors)
+
+DefaultAssay(lung_IPF_mac_rpca) = "integrated"
+
+print("UMAP")
+lung_IPF_mac_rpca <- ScaleData(lung_IPF_mac_rpca, verbose = FALSE)
+lung_IPF_mac_rpca <- RunPCA(lung_IPF_mac_rpca, verbose = FALSE)
+lung_IPF_mac_rpca <- RunUMAP(lung_IPF_mac_rpca,
+                            reduction = "pca",
+                            dims = 1:30,
+                            n.neighbors = 30,
+                            min.dist = 0.000001,
+                            n.components = 3,
+                            spread = 4)
+
+
+#DefaultAssay(lung_IPF_mac_rpca) <- "integrated"
+lung_IPF_mac_rpca <- FindNeighbors(lung_IPF_mac_rpca, reduction = "pca", dims = 1:30)
+lung_IPF_mac_rpca <- FindClusters(lung_IPF_mac_rpca, resolution = 0.3)
+
+pdf(paste0(working.dir,"lung_IPF_4datasets_mac_rpca_umap.pdf"))
+
+DimPlot(lung_IPF_mac_rpca, reduction = "umap", label = TRUE,dims = c(1,2))
+DimPlot(lung_IPF_mac_rpca, reduction = "umap", label = TRUE,dims = c(2,3))
+DimPlot(lung_IPF_mac_rpca, reduction = "umap", group.by = "dataset")
+dev.off()
+
+saveRDS(lung_IPF_mac_rpca,paste0(working.dir,"lung_IPF_4datasets_mac_rpca.rds"))
+
+```
+
+## DEG
+
+```{r}
+# lung_IPF_mac_rpca = readRDS(paste0(working.dir,"lung_IPF_mac_rpca.rds"))
+# DefaultAssay(lung_IPF_mac_rpca) = "RNA"
+# 
+# lung_IPF_mac_rpca_deg = FindAllMarkers(lung_IPF_mac_rpca)
+# write.csv(lung_IPF_mac_rpca_deg,paste0(working.dir,"/lung_IPF_mac_rpca_deg.csv"))
+```
+
+# integrate to IPF_mac
+
+```{r}
+# lung_IPF_mac_rpca = readRDS(paste0(working.dir,"lung_IPF_mac_rpca.rds"))
+# 
+# yu_balf = readRDS(paste0(working.dir,"run1to4_ck_ipf_n_copd_ck_rpca_subcluster_singlelivemac.rds"))
+# 
+# # Double check which assay your datasets are in, I think RNA assay is probably best
+# DefaultAssay(lung_IPF_mac_rpca) <- "integrated"
+# DefaultAssay(yu_balf) <- "integrated"
+# # find transfer anchors
+# Transfer.anchors <- FindTransferAnchors(reference = yu_balf, query = lung_IPF_mac_rpca,
+#                                         dims = 1:30)
+# # generate prediction scores
+# predictions <- TransferData(anchorset = Transfer.anchors, refdata = yu_balf$subcluster,
+#                             dims = 1:30)
+# # add prediction scores to metadata of your query object
+# lung_IPF_mac_rpca <- AddMetaData(lung_IPF_mac_rpca, metadata = predictions)
+# 
+# saveRDS(lung_IPF_mac_rpca,paste0(working.dir,"lung_IPF_mac_rpca_yubalf_label.rds"))
+# 
+# write.csv(lung_IPF_mac_rpca@meta.data,paste0(working.dir,"lung_IPF_mac_rpca_yubalf_label.meta.csv"))
+```
+
+```{r}
+# tmp_prediction = colnames(lung_IPF_mac_rpca@meta.data)[colnames(lung_IPF_mac_rpca@meta.data) %like% "prediction."]
+# 
+# tmp_data = cbind(lung_IPF_mac_rpca@meta.data$seurat_clusters,lung_IPF_mac_rpca@meta.data[,c(tmp_prediction)])
+# colnames(tmp_data)[1] = "seurat_clusters"
+# 
+# tmp_data = tmp_data%>%
+#   group_by(seurat_clusters)%>% 
+#   summarise(across(tmp_prediction, mean)) %>% 
+#   as.data.frame()
+# rownames(tmp_data) = tmp_data$seurat_clusters
+# tmp_data = tmp_data[,!colnames(tmp_data) %in% c("prediction.score.max","seurat_clusters")]
+# 
+# 
+# 
+# ComplexHeatmap::Heatmap(tmp_data)
+```
+
+

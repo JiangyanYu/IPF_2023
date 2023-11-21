@@ -1,0 +1,287 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+
+set.seed(123)
+library(caret)
+library(mlbench)
+library(MLmetrics)
+library(ggplot2)
+# data(Sonar)
+library(DescTools)
+library(magrittr)
+
+```
+
+# input data
+
+## discovery cohort
+
+```{r}
+working.dir = "/Users/jiangyanyu/sciebo /Projects/IPF_ownerJY/"
+impute_data = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/20221205_imputed_data_7parameters.csv"))
+cols.num <- c("FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+pnt_name = readxl::read_xlsx(path = paste0(working.dir,"/IPF_manuscript/meta_data/pnt_number_in_paper.xlsx"),sheet = "Sheet1")
+impute_data = merge(impute_data,pnt_name[,c("Patient2","pnt_in_paper")],by.x = "X",by.y="Patient2")
+
+ipf_meta = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/20230605_scaledvalue_patient_stages.csv"))
+
+impute_data = merge(impute_data,ipf_meta[c("pnt","stage")],by.x="pnt_in_paper",by.y="pnt")
+
+dis_data = impute_data[,c(cols.num,"stage")]
+rownames(dis_data) = impute_data$pnt_in_paper
+
+rm(pnt_name,ipf_meta)
+dis_data$stage = stringr::str_replace(dis_data$stage,pattern = "-",replacement = "")
+
+
+```
+
+## validation cohort
+
+```{r}
+testing_input = readxl::read_xlsx(path = paste0(working.dir,"/IPF_manuscript/meta_data/20230925_pntstage_testingdata.xlsx"),sheet = "Sheet1")
+
+val_data = testing_input[,cols.num] %>% as.data.frame()
+rownames(val_data) = testing_input$pnt
+
+val_data = dplyr::mutate_if(val_data,is.character,as.numeric)
+val_data$stage = testing_input$stage
+
+knitr::kable(testing_input)
+```
+
+
+# scale data
+
+```{r}
+merge_data = rbind(dis_data,val_data)
+
+library(magrittr)
+merge_data = merge_data %>% dplyr::mutate_at(c(1:6),scale)
+colnames(merge_data) = c(cols.num,"stage")
+
+write.csv(merge_data,file = paste0(working.dir,"/IPF_manuscript/meta_data/20230926_ml_predict_val.csv"))
+```
+
+# assign training/testing
+
+```{r}
+# val_ck = rownames(val_data)[rownames(val_data) %like% "%Control%"]
+# testing  <- merge_data[val_ck,]
+
+## use only IPF as training
+training <- merge_data[rownames(dis_data),] %>% subset(.,stage != "Control")
+inTraining <- createDataPartition(training$stage, p = .75, list = FALSE)
+training <- training[ inTraining,]
+testing  <- training[-inTraining,]
+training$stage = factor(training$stage,levels = c("EarlyIPF","AdvancedIPF"))
+
+
+
+
+
+# training$stage = factor(training$stage,levels = c("Control","EarlyIPF","AdvancedIPF"))
+
+# rm(val_ck)
+```
+
+
+# test models
+
+## train model
+
+```{r}
+ctrl <- trainControl(
+  method = "boot", 
+  repeats = 3,
+  classProbs = TRUE, 
+  summaryFunction = multiClassSummary
+)
+
+```
+
+<!-- ## svm -->
+<!-- support vector machines -->
+
+<!-- ```{r} -->
+<!-- plsFit <- train( -->
+<!--   stage ~ ., -->
+<!--   data = training, -->
+<!--   method = "svmLinear3", -->
+<!--   trControl = ctrl, -->
+<!--   tuneGrid = data.frame(cost = 1, #accounts for over-fitting -->
+<!--                         Loss = 2) #accounts for misclassifications -->
+<!-- ) -->
+<!-- plsFit -->
+
+<!-- plsProbs <- predict(plsFit, newdata = testing) -->
+
+<!-- # plsProbs = factor(plsProbs,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+<!-- # testing$stage = factor(testing$stage,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+
+<!-- plsProbs = factor(plsProbs,levels = c("EarlyIPF","AdvancedIPF")) -->
+<!-- testing$stage = factor(testing$stage,levels = c("EarlyIPF","AdvancedIPF")) -->
+
+<!-- svm_confusion_matrix <- caret::confusionMatrix(plsProbs, testing$stage, mode = "prec_recall") -->
+<!-- svm_confusion_matrix -->
+
+<!-- ``` -->
+
+<!-- ## knn -->
+
+<!-- ```{r} -->
+
+<!-- set.seed(123) -->
+
+<!-- plsFit <- train( -->
+<!--   stage ~ ., -->
+<!--   data = training, -->
+<!--    method = "knn", #the algorithm -->
+<!--   trControl = ctrl, #the resampling strategy we will use -->
+<!--   tuneGrid = data.frame(k = 2) #the hyperparameter -->
+<!-- ) -->
+<!-- plsFit -->
+
+<!-- plsProbs <- predict(plsFit, newdata = testing) -->
+
+<!-- # plsProbs = factor(plsProbs,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+<!-- # testing$stage = factor(testing$stage,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+
+<!-- plsProbs = factor(plsProbs,levels = c("EarlyIPF","AdvancedIPF")) -->
+<!-- testing$stage = factor(testing$stage,levels = c("EarlyIPF","AdvancedIPF")) -->
+
+<!-- svm_confusion_matrix <- caret::confusionMatrix(plsProbs, testing$stage, mode = "prec_recall") -->
+<!-- svm_confusion_matrix -->
+<!-- ``` -->
+
+
+
+<!-- ## decision tree -->
+
+<!-- ```{r} -->
+<!-- plsFit <- train( -->
+<!--   stage ~ ., -->
+<!--   data = training, -->
+<!--   method = "rpart", -->
+<!--   trControl = ctrl -->
+<!-- ) -->
+<!-- plsFit -->
+
+<!-- plsProbs <- predict(plsFit, newdata = testing) -->
+
+<!-- # plsProbs = factor(plsProbs,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+<!-- # testing$stage = factor(testing$stage,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+
+<!-- plsProbs = factor(plsProbs,levels = c("EarlyIPF","AdvancedIPF")) -->
+<!-- testing$stage = factor(testing$stage,levels = c("EarlyIPF","AdvancedIPF")) -->
+
+<!-- svm_confusion_matrix <- caret::confusionMatrix(plsProbs, testing$stage, mode = "prec_recall") -->
+<!-- svm_confusion_matrix -->
+<!-- ``` -->
+
+<!-- ## random forest -->
+
+<!-- ```{r} -->
+<!-- plsFit <- train( -->
+<!--   stage ~ ., -->
+<!--   data = training, -->
+<!--   method = "ranger", -->
+<!--   trControl = ctrl, -->
+<!--   tuneGrid = data.frame(mtry = 3, -->
+<!--                                       splitrule = "extratrees", -->
+<!--                                       min.node.size = 5) -->
+<!-- ) -->
+<!-- plsFit -->
+
+<!-- plsProbs <- predict(plsFit, newdata = testing) -->
+
+<!-- # plsProbs = factor(plsProbs,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+<!-- # testing$stage = factor(testing$stage,levels = c("Control","EarlyIPF","AdvancedIPF")) -->
+
+<!-- plsProbs = factor(plsProbs,levels = c("EarlyIPF","AdvancedIPF")) -->
+<!-- testing$stage = factor(testing$stage,levels = c("EarlyIPF","AdvancedIPF")) -->
+
+<!-- svm_confusion_matrix <- caret::confusionMatrix(plsProbs, testing$stage, mode = "prec_recall") -->
+<!-- svm_confusion_matrix -->
+<!-- ``` -->
+
+# use decision tree
+
+```{r}
+
+val_pre = merge_data[merge_data$stage == "IPF",]
+
+plsFit <- train(
+  stage ~ .,
+  data = training,
+  method = "rpart",
+  trControl = ctrl
+)
+
+plsFit
+
+plsProbs <- predict(plsFit, newdata = val_pre)
+
+knitr::kable(cbind(val_pre, prediction = plsProbs))
+```
+
+
+# diffusion map
+
+```{r}
+library(destiny)
+merge_data = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/20230926_ml_predict_val.csv"))
+dm = DiffusionMap(data = merge_data[,c(1:6)])
+
+merge_dm = cbind(merge_data,DC1 = dm$DC1,DC2 = dm$DC2)
+merge_dm$cohort = c(rep("dis",62),rep("val",14))
+merge_dm$cohort_stage = paste0(merge_dm$cohort,"_",merge_data$stage)
+stage_color = c("Control" = "grey",
+                "EarlyIPF" = "#076B94",
+                "AdvancedIPF" = "#C6A775")
+
+merge_dm$stage[(nrow(merge_dm)-6):nrow(merge_dm)] = plsProbs
+merge_dm$stage = factor(merge_dm$stage,levels = c("Control","EarlyIPF","AdvancedIPF"))
+```
+
+## plot
+
+```{r}
+pdf(paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures/fig4f.dm_ml_results.pdf"),paper = "a4",width = 4,height = 3)
+# png(paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures/fig4f.dm_ml_results.png"),res = 150)
+
+# ggplot(subset(merge_dm,cohort_stage != "val_Control"),aes(DC1,DC2,colour = stage))+
+ggplot(merge_dm,aes(DC1,DC2, shape = cohort))+
+  geom_point(size = 1)+
+  # scale_color_manual(values = stage_color)+
+  # geom_point(data = subset(merge_dm,cohort == "val"),aes(DC1,DC2,,shape = cohort),size = 2.5,shape=16)+
+  theme_classic()+
+  theme(axis.line = element_blank(),
+        axis.text.x = element_text(size = 8,colour = "black"),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_text(size = 8,colour = "black"),
+        panel.border = element_rect(color = "black",size=0.5,fill = NA),
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.text.align = 0,
+        legend.key.size = unit(0.5,"cm"),
+         title = element_text(size = 8,colour = "black")
+  )+
+  # scale_color_manual(name = "Stage",
+  #                    labels = c("Control","Early-IPF","Advanced-IPF"),
+  #                    values = stage_color)+
+  scale_shape_manual(name = "Cohort",
+                     labels = c("Discovery","Validation"),
+                     values = c(17,16))
+dev.off()
+```
+
