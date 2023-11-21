@@ -1,0 +1,614 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+# general settings
+
+```{r}
+load_packages = c("Seurat","ggplot2","magrittr","tidyr","dplyr","stringr","DescTools")
+lapply(load_packages,library,character.only=TRUE)
+
+working.dir = "/home/jyu/rstudio/"
+
+ms_dir = paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures")
+ms_date = "20230921"
+
+rm(load_packages)
+```
+
+## color
+
+### IPF stages
+
+```{r}
+stage_color = c("Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#E0B32D"
+                )
+```
+
+### cluster color
+
+```{r}
+major_cluster_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "5" = "#A0522D",
+                             "6" = "#BDE4C8",
+                             "7" = "#a7c957",
+                             "8" = "#73BCEB",
+                             "9" = "#C2AACB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "12" = "#7B68EE",
+                             "13" = "#6a994e",
+                             "14" = "#5C2C31",
+                             "15" = "#6C79D4",
+                             "16" = "#8FA0C6",
+                             "17" = "#E9967A",
+                             "19" = "#ffd500",
+                             "20" = "#31572c",
+                             "21" = "#252422",
+                             "22" = "#D096A8",
+                             "24" = "#0000FF")
+```
+
+## mac_label
+
+```{r}
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+```
+
+## load seurat object
+
+```{r}
+
+ipf_seu_mac = readRDS(file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac.rds"))
+
+
+Idents(ipf_seu_mac) = "subcluster"
+
+##use same colors for cluster 7, 13, 20
+mac_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "7" = "#6a994e",
+                             "8" = "#73BCEB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "13" = "#6a994e",
+                             "20" = "#6a994e")
+
+
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+```
+
+
+# figure 2A
+
+```{r}
+
+##use same colors for cluster 7, 13, 20
+mac_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "7" = "#6a994e",
+                             "8" = "#73BCEB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "13" = "#6a994e",
+                             "20" = "#6a994e")
+
+
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+
+pdf(file = paste0(ms_dir,"/fig2a.mac_by_group_",ms_date,".pdf"),paper = "a4",width = 7,height = 2.5)
+
+## select 1000 cells per condition
+num_cells = 1000
+selected_cells = ipf_seu_mac@meta.data
+selected_cells$cellid = rownames(selected_cells)
+selected_cells= selected_cells %>% group_by(IPFgroup) %>% slice_sample(n=num_cells)
+
+
+p = DimPlot(ipf_seu_mac[,selected_cells$cellid],dims = c(2,3),
+        split.by = "IPFgroup",
+        # group.by = "major",
+        cols = mac_color,
+        raster = TRUE,repel = TRUE,raster.dpi = c(1024,1024),pt.size = 10)+
+        # label = TRUE,label.size = 2.7)+
+  # labs(title = "All cells (n=72,360)")+
+  # geom_text(data=data.frame(),aes(label = "71,360 cells",x=-Inf,y=Inf),hjust=-0.1,vjust=21,size=3)+
+  # ggrepel::geom_text_repel()+
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_text(size=7),
+        strip.text = element_text(size = 7,colour = "black",face = "plain"),
+        plot.title = element_text(hjust=0.5,face = "plain",size = 8),
+        panel.border = element_rect(color = "black",size=0.3,fill = NA),
+        legend.text = element_text(size = 7,colour = "black"),
+        legend.text.align = 0,
+        legend.key.size = unit(0.4,"cm"),
+        legend.title = element_text(size = 8))+
+  scale_color_manual(name = "Cluster",
+                     labels = mac_label[1:9],
+                     values = mac_color[1:9])
+        # legend.position = "none")
+# ggpubr::ggarrange(p1,p2,p3,p4,ncol = 4,nrow = 1,widths = c(2.4,2.4,2.4,3.4))
+# ggpubr::ggarrange(p1,p2,p3,ncol =3,nrow = 1,widths = c(1.9,1.9,3.3))
+
+plot(p)
+
+dev.off()
+
+p
+
+rm(num_cells,selected_cells)
+```
+
+# figure 2B
+
+## umap list
+
+```{r}
+umap_list = list()
+ipf_seu_mac$subcluster1 = ifelse(ipf_seu_mac$subcluster %in% c(13,20),"7",as.character(ipf_seu_mac$subcluster))
+ipf_seu_mac$subcluster1 = factor(ipf_seu_mac$subcluster1,levels = c(0,"4_0","4_1","4_2",6,8,10,11,7))
+
+Idents(ipf_seu_mac) = "subcluster1"
+
+tmp_cluster = c(0,"4_0","4_1","4_2",6,8,10,11,7)
+# tmp_label = c(expression(Alveolar*"-"*M*phi1*(0)),"Monocyte(4_0)",expression(RNASE1^"+"*M*phi1*(4*"_"*1)),expression(SPP1^"+"*M*phi1*(4*"_"*2)),expression(S100A11^"+"*M*phi1*(6)),expression(CXCL10^"+"*M*phi1*(8)),expression(TNFAIP6^"+"*M*phi1*(10)),expression(NEAT1^"+"*M*phi1*(11)),"20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+tmp_label = c(expression(Alveolar*"-"*M*phi1),"Monocyte",expression(RNASE1^"+"*M*phi1),expression(SPP1^"+"*M*phi1),expression(S100A11^"+"*M*phi1),expression(CXCL10^"+"*M*phi1),expression(TNFAIP6^"+"*M*phi1),expression(NEAT1^"+"*M*phi1),"7" = expression(MKI67^"+"*M*phi1))
+
+for(i in c(1:length(tmp_cluster))){
+
+  p = DimPlot(ipf_seu_mac,dims = c(2,3),
+              cells.highlight = WhichCells(ipf_seu_mac,idents = tmp_cluster[i]),
+              order = TRUE,raster = TRUE,
+              pt.size = 0.5)+
+    theme(legend.position = "none",
+          axis.title = element_blank(),
+          axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          axis.line = element_blank(),
+          plot.margin = margin(0,10,0,-10))
+
+  
+  umap_list[[i]] = p
+  
+}
+
+rm(i,p)
+```
+
+## boxplot list
+
+```{r}
+boxplot_list = list()
+tmp_cluster = c(0,"4_0","4_1","4_2",6,8,10,11,7)
+tmp_data = cbind(ipf_seu_mac$pnt_in_paper,as.character(ipf_seu_mac$subcluster1)) %>% as.data.frame()
+colnames(tmp_data) = c("patient","seurat_clusters")
+
+ns <- table(sample = tmp_data$patient, cell_type = paste0(tmp_data$seurat_clusters))
+fq <- prop.table(ns, 1) * 100
+df <- as.data.frame(fq)
+df = merge(df, unique(ipf_seu_mac@meta.data[,c("pnt_in_paper","Disease","source","IPFgroup")]),by.x="sample",by.y="pnt_in_paper")
+
+rm(ns,fq,tmp_data)
+
+for(i in c(1:length(tmp_cluster))){
+  
+  tmp_data = subset(df,cell_type == tmp_cluster[i])[,c("sample","Freq","IPFgroup")]
+  colnames(tmp_data) = c("patient","para","Stage")
+  
+  tmp_data$Stage = factor(tmp_data$Stage,levels = c("Control","Early-IPF","Advanced-IPF"))
+  
+  if(i==4){
+    my_comparisons <- list( 
+  c("Control","Early-IPF"),
+  # c("Control","Advanced-IPF")
+  c("Early-IPF","Advanced-IPF")
+                        )
+  }else if(i==1|i==2|i==6){
+    my_comparisons <- list(
+  # c("Control","Early-IPF"),
+  # c("Control","Advanced-IPF"),
+  # c("Early-IPF","Advanced-IPF")
+                        )
+  }else{
+        my_comparisons <- list(
+  # c("Control","Early-IPF"),
+  c("Control","Advanced-IPF")
+  # c("Early-IPF","Advanced-IPF")
+                        )
+  }
+
+p =  tmp_data  %>%
+  ggplot(.,aes(x=Stage,y=as.numeric(para),color=Stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=6)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.9)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "wilcox.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = stage_color)+
+  theme_classic()+
+  ylim(c(0,max(tmp_data$para)*1.2 ))+
+  # scale_y_continuous(position = "right")+
+  # ylab(label = paste0("Out of all cells (%)"))+
+  labs(title = tmp_label[i])+
+  xlab("")+
+  # coord_flip()+
+   theme(axis.text.x = element_text(size = 8,colour = "black",angle = 90,vjust = 0.5,hjust = 1),
+         axis.ticks.x = element_blank(),
+         axis.line = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         # axis.title.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_blank(),
+         title = element_text(size = 7,colour = "black"),
+         # plot.title = element_text(hjust=0),
+         plot.title.position = "plot",
+         panel.border = element_rect(color = "black",size=0.8,fill = NA),
+         legend.position = "NULL")
+  
+  boxplot_list[[i]] = p
+  
+}
+
+rm(p,i,tmp_data,df,my_comparisons)
+```
+
+## merge plots
+
+```{r}
+library(ggpubr)
+library(grid)
+pdf(file = paste0(ms_dir,"/fig2b.boxpot_by_group_",ms_date,".pdf"),paper = "a4",width = 7.2,height = 3)
+# p = ggpubr::ggarrange(plotlist=c(umap_list[c(1:5)],boxplot_list[1:5],umap_list[c(6:9)],"",boxplot_list[6:9]),ncol = 5,nrow = 4,heights = c(0.5,1.5,0.5,1.5))
+
+p = ggpubr::ggarrange(plotlist=c(umap_list,boxplot_list),ncol = 9,nrow = 2,heights = c(0.5,2.5)
+                  )
+
+ggpubr::annotate_figure(p,left = textGrob(expression("%"~of~M*phi1), rot = 90, vjust=1,gp=gpar(cex=0.8)))
+
+
+dev.off()
+ggpubr::annotate_figure(p,left = textGrob(expression("%"~of~M*phi1), rot = 90, vjust=1,gp=gpar(cex=0.8)))
+rm(p,umap_list,boxplot_list,tmp_label,tmp_cluster)
+```
+
+# figure S3A
+
+## upload Table S4
+```{r}
+input = readxl::read_xlsx(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/SupplementaryTables.xlsx"),  sheet = "TableS4")
+
+colnames(input) = input[1,]
+input = input[2:nrow(input),]
+input$`4_0` = as.numeric(input$`4_0`)
+input$`4_1` = as.numeric(input$`4_1`)
+input$`4_2` = as.numeric(input$`4_2`)
+
+input = pivot_longer(input, cols = colnames(input)[!colnames(input) %in% c("Patient","Stage")], names_to = "cluster")
+# input$total = rowSums(input[,c(3:24)])
+tmp_cluster = c("0" = "Macrophage",
+                             "4_0" = "Macrophage",
+                             "4_1" = "Macrophage",
+                             "4_2" = "Macrophage",
+                             "5" = "T/NK cell",
+                             "6" = "Macrophage",
+                             "7" = "Macrophage",
+                             "8" = "Macrophage",
+                             "9" = "T/NK cell",
+                             "10" = "Macrophage",
+                             "11" = "Macrophage",
+                             "12" = "Neutrophil",
+                             "13" = "Macrophage",
+                             "14" = "T/NK cell",
+                             "15" = "Epithelial cell",
+                             "16" = "Epithelial cell",
+                             "17" = "DC",
+                             "19" = "DC",
+                             "20" = "Macrophage",
+                             "21" = "Mast cell",
+                             "22" = "Eosinophil",
+                             "24" = "Epithelial cell") %>% as.data.frame()
+colnames(tmp_cluster) = "type"
+tmp_cluster$cluster = rownames(tmp_cluster)
+
+input = merge(input,tmp_cluster,by.x = "cluster",by.y = "cluster")
+
+input1 = input %>% group_by(Patient,Stage,type) %>% summarise(count = sum(value))
+
+input1 = input1 %>% group_by(Patient) %>% mutate(Percent = count/sum(count))
+
+rm(input,tmp_cluster)
+```
+
+## boxplot
+
+```{r}
+plot_color =  c("Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#E0B32D"
+                )
+
+my_comparisons = list(c("Control","Early-IPF"),
+                       c("Control","Advanced-IPF"),
+                       c("Early-IPF","Advanced-IPF"))
+
+boxplot_list = list()
+
+for(i in unique(input1$type)){
+  tmp_data = subset(input1,type == i)
+  colnames(tmp_data) = c("Patient","Stage","type","count","para")
+  tmp_data$para = 100*tmp_data$para
+  tmp_data$Stage = factor(tmp_data$Stage,levels = c("Control","Early-IPF","Advanced-IPF"))
+  
+  p =  tmp_data  %>%
+  ggplot(.,aes(x=Stage,y=as.numeric(para),color=Stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=6)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.9)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  # ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "wilcox.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = plot_color)+
+  theme_classic()+
+  ylim(c(0,max(tmp_data$para)*1.3 ))+
+  # scale_y_continuous(position = "right")+
+  # ylab(label = paste0("Out of all cells (%)"))+
+  labs(title = i)+
+  xlab("")+
+  # coord_flip()+
+   theme(
+     # axis.text.x =element_blank(),
+     axis.text.x = element_text(size = 8,colour = "black",angle = 90,vjust = 0.5,hjust = 1),
+         axis.ticks.x = element_blank(),
+         axis.line = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         # axis.title.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_blank(),
+         title = element_text(size = 7,colour = "black"),
+         # plot.title = element_text(hjust=0),
+         # plot.title.position = "plot",
+         panel.border = element_rect(color = "black",size=0.8,fill = NA),
+         legend.position = "NULL")
+  
+  boxplot_list[[i]] = p
+  
+}
+
+rm(plot_color,my_comparisons,i,tmp_data,p)
+
+```
+
+
+## plot boxplot
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs3a.boxpot_by_group_majorType_",ms_date,".pdf"),paper = "a4",width = 7,height = 2.5)
+
+p = ggpubr::ggarrange(plotlist=c(boxplot_list),ncol = 7,nrow = 1,heights = c(1.25,1.25)
+                  )
+
+ggpubr::annotate_figure(p,left = grid::textGrob(expression("%"~of~all~cell), rot = 90, vjust=1
+                                                # ,gp=grid::gpar(cex=0.8)
+                                                ))
+
+
+dev.off()
+
+ggpubr::annotate_figure(p,left = grid::textGrob(expression("%"~of~all~cell), rot = 90, vjust=1
+                                                # ,gp=grid::gpar(cex=0.8)
+                                                ))
+
+rm(boxplot_list,p)
+```
+
+
+# figure 2C/S3C
+
+
+## boxplot per cluster
+
+```{r}
+ipf_seu_mac$IPFgroup1 = paste0(ipf_seu_mac$source,ipf_seu_mac$IPFgroup)
+
+boxplot_list = list()
+tmp_cluster = c(0,"4_0","4_1","4_2",6,8,10,11,7)
+
+tmp_label = c(expression(Alveolar*"-"*M*phi1),"Monocyte",expression(RNASE1^"+"*M*phi1),expression(SPP1^"+"*M*phi1),expression(S100A11^"+"*M*phi1),expression(CXCL10^"+"*M*phi1),expression(TNFAIP6^"+"*M*phi1),expression(NEAT1^"+"*M*phi1),"7" = expression(MKI67^"+"*M*phi1))
+
+tmp_data = cbind(ipf_seu_mac$pnt_in_paper,as.character(ipf_seu_mac$subcluster1)) %>% as.data.frame()
+colnames(tmp_data) = c("patient","seurat_clusters")
+
+ns <- table(sample = tmp_data$patient, cell_type = paste0(tmp_data$seurat_clusters))
+fq <- prop.table(ns, 1) * 100
+df <- as.data.frame(fq)
+df = merge(df, unique(ipf_seu_mac@meta.data[,c("pnt_in_paper","Disease","source","IPFgroup1")]),by.x="sample",by.y="pnt_in_paper")
+
+rm(ns,fq,tmp_data)
+
+for(i in c(1:length(tmp_cluster))){
+  
+  tmp_data = subset(df,cell_type == tmp_cluster[i])[,c("sample","Freq","IPFgroup1")]
+  colnames(tmp_data) = c("patient","para","Stage")
+  
+  tmp_data$Stage = factor(tmp_data$Stage,levels = c("Kevin_COPDControl","Present_studyControl","Present_studyEarly-IPF","Present_studyAdvanced-IPF"))
+  
+  if(i==1){
+    my_comparisons <- list( 
+  c("Kevin_COPDControl","Present_studyControl")
+                        )
+  }else if(i==3){
+    my_comparisons <- list(
+      c("Kevin_COPDControl","Present_studyControl"),
+      c("Kevin_COPDControl","Present_studyAdvanced-IPF")
+                        )
+  }else if(i == 4){
+    my_comparisons <- list(
+      c("Kevin_COPDControl","Present_studyEarly-IPF"),
+      c("Present_studyControl","Present_studyEarly-IPF"),
+      c("Present_studyEarly-IPF","Present_studyAdvanced-IPF")
+                        )
+  }else if(i == 5){
+    my_comparisons <- list(
+      c("Kevin_COPDControl","Present_studyControl"),
+      c("Kevin_COPDControl","Present_studyEarly-IPF"),
+      c("Kevin_COPDControl","Present_studyAdvanced-IPF")
+                        )
+  }else if(i == 7){
+    my_comparisons <- list(
+      c("Kevin_COPDControl","Present_studyControl"),
+      c("Kevin_COPDControl","Present_studyAdvanced-IPF")
+                        )
+  }else if(i == 8){
+    my_comparisons <- list(
+      # c("Kevin_COPDControl","Present_studyControl"),
+      c("Kevin_COPDControl","Present_studyAdvanced-IPF")
+                        )
+  }else if(i == 9){
+    my_comparisons <- list(
+      c("Kevin_COPDControl","Present_studyControl"),
+      c("Kevin_COPDControl","Present_studyEarly-IPF"),
+      c("Kevin_COPDControl","Present_studyAdvanced-IPF")
+                        )
+  }else{
+        my_comparisons <- list(
+  # c("Control","Early-IPF"),
+  # c("Control","Advanced-IPF")
+  # c("Early-IPF","Advanced-IPF")
+                        )
+  }
+
+  
+  plot_color =  c("Kevin_COPDControl" = "black",
+                "Present_studyControl" = "grey",
+                "Present_studyEarly-IPF" = "#076B94",
+                "Present_studyAdvanced-IPF" = "#E0B32D"
+                )
+  
+  
+p =  tmp_data  %>%
+  ggplot(.,aes(x=Stage,y=as.numeric(para),color=Stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=6)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.9)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "wilcox.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = plot_color)+
+  scale_x_discrete(labels = c("Kevin_COPDControl" = "Bassler_Control",
+                "Present_studyControl" = "Control",
+                "Present_studyEarly-IPF" = "Early-IPF",
+                "Present_studyAdvanced-IPF" = "Advanced-IPF"))+
+  theme_classic()+
+  ylim(c(0,max(tmp_data$para)*1.3 ))+
+  # scale_y_continuous(position = "right")+
+  # ylab(label = paste0("Out of all cells (%)"))+
+  labs(title = tmp_label[i])+
+  xlab("")+
+  # coord_flip()+
+   theme(
+     # axis.text.x =element_blank(),
+     axis.text.x = element_text(size = 8,colour = "black",angle = 90,vjust = 0.5,hjust = 1),
+         axis.ticks.x = element_blank(),
+         axis.line = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         # axis.title.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_blank(),
+         title = element_text(size = 7,colour = "black"),
+         # plot.title = element_text(hjust=0),
+         # plot.title.position = "plot",
+         panel.border = element_rect(color = "black",size=0.8,fill = NA),
+         legend.position = "NULL")
+  
+  boxplot_list[[i]] = p
+  
+}
+```
+
+## figure 2C
+
+```{r}
+pdf(file = paste0(ms_dir,"/fig2c.boxpot_by_group_divideCK_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 3)
+
+p = boxplot_list[4]
+p = p[[1]] +
+  ylab(expression("%"~of~M*phi1))+
+  theme(axis.title.y = element_text(size = 8,colour = "black",angle = 90),
+        plot.title = element_text(hjust = 0.5)
+        )
+  
+plot(p)
+
+
+dev.off()
+
+
+p
+# rm(boxplot_list,tmp_cluster,tmp_data,ns,fq,df,i,my_comparisons,plot_color,p.tmp_label)
+```
+
+## figure S3b
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs3b.boxpot_by_group_divideCK_",ms_date,".pdf"),paper = "a4",width = 7,height = 5)
+
+p = ggpubr::ggarrange(plotlist=c(boxplot_list[1:3],boxplot_list[5:9]),ncol = 4,nrow = 2
+                  )
+
+ggpubr::annotate_figure(p,left = grid::textGrob(expression("%"~of~M*phi1), rot = 90, vjust=1,gp=grid::gpar(cex=0.8)))
+
+
+dev.off()
+
+p
+
+# rm(boxplot_list,tmp_cluster,tmp_data,ns,fq,df,i,my_comparisons,plot_color,p.tmp_label)
+```
+
+# session
+
+```{r}
+sessionInfo()
+```
+

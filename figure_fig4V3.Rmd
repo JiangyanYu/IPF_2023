@@ -1,0 +1,244 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+# general settings
+
+## load library
+
+```{r include=FALSE}
+# rm(list=ls())
+gc()
+#CRAN packages
+list.of.packages <- c("readr",
+                      "cowplot",
+                      "useful",
+                      "Seurat",
+                      "stringr",
+                      "umap",
+                      "ggplot2",
+                      "reshape2",
+                      "dplyr",
+                      "tidyr",
+                      "Matrix.utils",
+                      "VGAM",
+                      "plotly",
+                      "future",
+                      "data.table",
+                      "DescTools"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)>0) install.packages(new.packages)
+
+#BioconductoR packages
+list.of.bioc.packages <- c(
+  # "tximport",
+                           # "DESeq2",
+                           # "Seurat",
+                           # "slingshot",
+                           # "flowCore",
+                           "biomaRt",
+                           "clusterProfiler",
+                           "org.Hs.eg.db",
+                           "org.Mm.eg.db",
+                           # "destiny",
+                           # "GSEABase",
+                           "DOSE"
+                           # "BiocGenerics",
+                           # "DelayedArray",
+                           # "DelayedMatrixStats",
+                           # "limma",
+                           # "S4Vectors",
+                           # "SingleCellExperiment",
+                           # "SummarizedExperiment",
+                           # "batchelor")
+                           # "annotables")
+)
+new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
+# 
+if(length(new.packages.bioc)>0)if (!requireNamespace("BiocManager")) install.packages("BiocManager")
+BiocManager::install(new.packages.bioc, update = FALSE)
+
+lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
+
+rm(list.of.bioc.packages,list.of.packages,new.packages,new.packages.bioc)
+```
+
+## working directory
+
+```{r}
+
+
+working.dir = "/home/jyu/rstudio/"
+
+ms_dir = paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures")
+ms_date = "20230921"
+
+rm(load_packages)
+```
+
+## color
+
+### IPF stages
+
+```{r}
+stage_color = c("Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#E0B32D"
+                )
+```
+
+
+
+## mac_label
+
+```{r}
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+```
+
+# load saved object
+
+```{r}
+ghent_seu = readRDS(file = paste0(working.dir,"/scRNA_processed/230306_Ghent_COVID_CITEseq_Annotated_spp1predicted.RDS"))
+
+Idents(ghent_seu) = "seurat_clusters"
+
+ghent_seu[["percent.mt"]] = PercentageFeatureSet(ghent_seu,pattern = "MT-",assay = "originalexp")
+
+VlnPlot(ghent_seu,features = "percent.mt",pt.size = 0)
+
+# ghent_seu = RUN
+```
+
+## overlay ipfmac database
+
+```{r}
+# ghent_seu = readRDS(paste0(working.dir,"/scRNA_processed/230306_Ghent_COVID_CITEseq_Annotated.RDS"))
+# run1to4_ck_ipf_n_copd_ck_singlelive_mac = readRDS(paste0(working.dir,"/scRNA_processed/run1to4_ck_ipf_n_copd_ck_rpca_subcluster_singlelivemac.rds"))
+# 
+# ## rename meta data colnames
+# colnames(ghent_seu@meta.data)[48:49] = c("umap1_old","umap2_old")
+# 
+# # Double check which assay your datasets are in, I think RNA assay is probably best
+# DefaultAssay(ghent_seu) <- "GEX"
+# DefaultAssay(run1to4_ck_ipf_n_copd_ck_singlelive_mac) <- "integrated"
+# 
+# # find transfer anchors
+# Transfer.anchors <- FindTransferAnchors(reference = run1to4_ck_ipf_n_copd_ck_singlelive_mac, query = ghent_seu,
+#                                         dims = 1:30)
+# # generate prediction scores
+# predictions <- TransferData(anchorset = Transfer.anchors, refdata = run1to4_ck_ipf_n_copd_ck_singlelive_mac$subcluster,
+#                             dims = 1:30)
+# # add prediction scores to metadata of your query object
+# ghent_seu <- AddMetaData(ghent_seu, metadata = predictions)
+# 
+# write.csv(ghent_seu@meta.data,file = paste0(working.dir,"ghent_annotated_by_ipfmac.csv"))
+# 
+# saveRDS(ghent_seu,file = paste0(working.dir,"/scRNA_processed/230306_Ghent_COVID_CITEseq_Annotated_spp1predicted.RDS"))
+
+```
+
+# figure 4B
+
+```{r}
+Idents(ghent_seu) = "seurat_clusters"
+
+Idents(ghent_seu) = factor(Idents(ghent_seu),levels = c(6,1,10,2,5,0,3,4,9,7,8,11))
+
+DefaultAssay(ghent_seu) = "ADT"
+
+pdf(file = paste0(ms_dir,"/fig4b.ghent_cite_antibody_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 3.5)
+
+# DoHeatmap(tmp_seu,features = c("Antibody-CD10","Antibody-CD169","Antibody-CD206"),slot = "data",group.by = "seurat_clusters",angle = 90)+
+#   # scale_fill_gradientn(colours  = c("#a8dadc","white","#9d0208"))+
+#   guides(color="none")
+
+p = DotPlot(ghent_seu,features = c("Antibody-CD10","Antibody-CD169","Antibody-CD206"))
+
+p = p +
+  scale_y_discrete(labels = c(
+    "6" = "6:Monocyte",
+                         "1" = expression(1*":"*RNASE1^"+"*M*phi1),
+                         "10" = expression(10*":"*SPP1^"+"*M*phi1),
+                         "2" = expression(2*":"*Alveolar*"-"*M*phi1),
+                         "5" = expression(5*":"*Alveolar*"-"*M*phi1),
+                         "0" = expression(0*":"*CXCL10^"+"*M*phi1),
+                         "3" = expression(3*":"*CXCL10^"+"*M*phi1),
+                         "4" = expression(4*":"*APOE^"+"*M*phi1),
+                         "9" = expression(9*":"*APOE^"+"*M*phi1),
+                         "7" = expression(7*":"*FCGR3B^"+"*M*phi1),
+                         "8" = "8:DC",
+                         "11" = "11:Dead cell"
+  ))+
+  
+  scale_x_discrete(labels = c(
+    "Antibody-CD10" = "CD10",
+    "Antibody-CD169" = "CD169",
+    "Antibody-CD206" = "CD206"
+  ))+
+  theme_classic()+
+  theme(axis.text.x = element_text(size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_blank(),
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.title = element_text(size = 8,colour = "black"),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.position = "bottom",
+        legend.box = "vertical",
+        legend.justification = c(0,1),
+        legend.margin = margin(0,20,0,-50))+
+  guides(size = guide_legend(order = 2,direction = "horizontal",title = "% of exp. cells"),
+         color = guide_colorbar(order = 2,direction = "horizontal",title = "Antibody expression",barwidth = 3,barheight = 0.3))
+  
+plot(p)
+dev.off()
+
+p
+
+rm(tmp_seu,p)
+```
+
+# figure 4C
+
+```{r}
+pdf(file = paste0(ms_dir,"/fig4c.ghent_cite_FLOR2_ALCAM_",ms_date,".pdf"),paper = "a4",width = 4,height = 1.5)
+
+
+DefaultAssay(ghent_seu) = "GEX"
+p = VlnPlot(ghent_seu,features = c("FOLR2","ALCAM"),pt.size = 0) &
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_text(size = 8),
+        legend.position = "none",
+        axis.text.y  = element_text(size = 8),
+        axis.text.x  = element_text(size = 8,angle = 0,hjust = 0.5),
+        plot.title = element_text(size=8))
+
+plot(p)
+
+dev.off()
+
+p
+
+rm(p)
+```
+
+# session
+
+```{r,results='asis'}
+sessionInfo()
+```
+

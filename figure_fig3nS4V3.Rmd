@@ -1,0 +1,1562 @@
+---
+title: "IPF figures"
+author: "Jiangyan Yu (jiangyan.yu@uni-bonn.de)"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+# general settings
+
+
+## load library
+
+```{r include=FALSE}
+# rm(list=ls())
+gc()
+#CRAN packages
+list.of.packages <- c("readr",
+                      "cowplot",
+                      "useful",
+                      "Seurat",
+                      "stringr",
+                      "umap",
+                      "ggplot2",
+                      "reshape2",
+                      "dplyr",
+                      "tidyr",
+                      "Matrix.utils",
+                      "VGAM",
+                      "plotly",
+                      "future",
+                      "data.table",
+                      "DescTools"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)>0) install.packages(new.packages)
+
+#BioconductoR packages
+list.of.bioc.packages <- c(
+  # "tximport",
+                           # "DESeq2",
+                           # "Seurat",
+                           # "slingshot",
+                           # "flowCore",
+                           "biomaRt",
+                           "clusterProfiler",
+                           "org.Hs.eg.db",
+                           "org.Mm.eg.db",
+                           # "destiny",
+                           # "GSEABase",
+                           "DOSE"
+                           # "BiocGenerics",
+                           # "DelayedArray",
+                           # "DelayedMatrixStats",
+                           # "limma",
+                           # "S4Vectors",
+                           # "SingleCellExperiment",
+                           # "SummarizedExperiment",
+                           # "batchelor")
+                           # "annotables")
+)
+new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
+# 
+if(length(new.packages.bioc)>0)if (!requireNamespace("BiocManager")) install.packages("BiocManager")
+BiocManager::install(new.packages.bioc, update = FALSE)
+
+lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
+
+rm(list.of.bioc.packages,list.of.packages,new.packages,new.packages.bioc)
+```
+
+## working directory
+
+```{r}
+
+
+working.dir = "/home/jyu/rstudio/"
+
+ms_dir = paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures")
+ms_date = "20230921"
+
+rm(load_packages)
+```
+
+## color
+
+### IPF stages
+
+```{r}
+stage_color = c("Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#E0B32D"
+                )
+```
+
+
+
+## mac_label
+
+```{r}
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+```
+
+## function
+
+### GSEA
+
+```{r}
+library(biomaRt)
+library(org.Hs.eg.db)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+library(DOSE)
+
+gsea_pathway_dir = paste0(working.dir,"/IPF_manuscript/meta_data/gsea_database/")
+
+GSEA_calc_gene <- function(gene_list,
+                           DEG_list,
+                           comparison = NULL,
+                           species = "M", # H for human
+                           genes_down = NULL,
+                           genes_all = NULL,
+                           GeneSets =c("GO","KEGG","DO","Hallmark","cannonicalPathways","Motifs","ImmunoSignatures"),
+                           GOntology = "BP", #Alternative "MF" or "CC"
+                           pCorrection = "bonferroni", # choose the p-value adjustment method
+                           pvalueCutoff = 0.1, # set the unadj. or adj. p-value cutoff (depending on correction method)
+                           qvalueCutoff = 0.2 # set the q-value cutoff (FDR corrected)
+) {
+  
+  # define universe
+  universe <- as.character(gene_list)
+  # change symbols to ENTREZ IDs (necessary for ClusterProfiler)
+  if(species == "M") {
+    universe = getLDS(attributes = c("mgi_symbol"), 
+                      filters = "mgi_symbol", 
+                      values = universe, 
+                      mart = useMart("ensembl", dataset = "mmusculus_gene_ensembl",host = "https://dec2021.archive.ensembl.org/"), 
+                      attributesL = c("hgnc_symbol"), 
+                      martL = useMart("ensembl", dataset = "hsapiens_gene_ensembl",host = "https://dec2021.archive.ensembl.org/"), 
+                      uniqueRows=T)[,2]
+  }else{}
+  
+  universe_Entrez <- bitr(universe, 
+                          fromType="SYMBOL", 
+                          toType="ENTREZID", 
+                          OrgDb="org.Hs.eg.db")$ENTREZID
+  
+  human = useMart("ensembl", dataset = "hsapiens_gene_ensembl",host = "https://dec2021.archive.ensembl.org/")
+  mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl",host = "https://dec2021.archive.ensembl.org/")
+  # human = useMart("ensembl", dataset = "hsapiens_gene_ensembl",host = "https://www.ensembl.org")
+  # mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl",host = "https://www.ensembl.org")
+  
+  
+  genes_up = DEG_list 
+  # genes_down = DEG_down_list 
+  # genes_all = DEG_all_list
+  
+  if(species == "M") {
+    genes_up <- getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = genes_up, mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=T)[,2]
+    # genes_down <- getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = genes_down, mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=T)[,2]
+    # genes_all <- getLDS(attributes = c("mgi_symbol"), filters = "mgi_symbol", values = genes_all, mart = mouse, attributesL = c("hgnc_symbol"), martL = human, uniqueRows=T)[,2]
+  }
+  
+  cannonicalPathway_genes <- clusterProfiler::read.gmt(paste(gsea_pathway_dir,"c2.all.v7.5.entrez.gmt",sep=""))
+  immuno_genes <- clusterProfiler::read.gmt(paste(gsea_pathway_dir,"c7.all.v7.5.entrez.gmt",sep=""))
+  hallmark_genes <- clusterProfiler::read.gmt(paste(gsea_pathway_dir,"h.all.v7.5.entrez.gmt",sep=""))
+  motifs <- clusterProfiler::read.gmt(paste(gsea_pathway_dir,"c3.all.v7.5.entrez.gmt",sep=""))
+  
+  # if(!is.null(group_by)){
+  # SetIdents(object = tmp) <- group_by
+  # } 
+  
+  # if(!is.null(genes_down)) {
+  #   top_down <- genes_down
+  #   entrez_down <- bitr(top_down, fromType = "SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)$ENTREZID
+  # }
+  
+  # if(!is.null(genes_all)) {
+  #   top_all <- genes_all
+  #   entrez_all <- bitr(top_all, fromType = "SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)$ENTREZID
+  # }
+  
+  top_up <- genes_up
+  entrez_up <- bitr(top_up, fromType = "SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)$ENTREZID
+  
+  OrgDb = org.Hs.eg.db
+  
+  results <- list()
+  
+  
+  # GO enrichment
+  if("GO" %in% GeneSets){
+    print("Performing GO enrichment")
+    results$GOup <- as.data.frame(enrichGO(gene = entrez_up,
+                                           universe = universe_Entrez,
+                                           OrgDb = OrgDb,
+                                           ont = GOntology,
+                                           pAdjustMethod = pCorrection,
+                                           pvalueCutoff  = pvalueCutoff,
+                                           qvalueCutoff  = qvalueCutoff,
+                                           readable      = T))
+    
+    if(nrow(results$GOup)>0){results$GOup$Enrichment <- paste("GO enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$GOdown <- as.data.frame(enrichGO(gene = entrez_down,
+    #                                            universe = universe_Entrez,
+    #                                            OrgDb = OrgDb,
+    #                                            ont = GOntology,
+    #                                            pAdjustMethod = pCorrection,
+    #                                            pvalueCutoff  = pvalueCutoff,
+    #                                            qvalueCutoff  = qvalueCutoff,
+    #                                            readable      = T))
+    #   if(nrow(results$GOdown)>0){results$GOdown$Enrichment <- paste("GO enrichment for genes downregulated in comparison ",comparison,sep="")}
+    # }
+    
+  #   if(!is.null(genes_all)) {
+  #     results$GOall <- as.data.frame(enrichGO(gene = entrez_all,
+  #                                             universe = universe_Entrez,
+  #                                             OrgDb = OrgDb,
+  #                                             ont = GOntology,
+  #                                             pAdjustMethod = pCorrection,
+  #                                             pvalueCutoff  = pvalueCutoff,
+  #                                             qvalueCutoff  = qvalueCutoff,
+  #                                             readable      = T))
+  #     if(nrow(results$GOall)>0){results$GOall$Enrichment <- paste("GO enrichment for genes allregulated in comparison ",comparison,sep="")}
+  #   }
+  }
+  
+  # KEGG enrichment
+  if("KEGG" %in% GeneSets){
+    print("Performing KEGG enrichment")
+    
+    org = "hsa"
+    
+    results$KEGGup <- as.data.frame(enrichKEGG(gene = entrez_up, 
+                                               organism = org,
+                                               universe = universe_Entrez, 
+                                               pAdjustMethod = pCorrection,
+                                               pvalueCutoff  = pvalueCutoff,
+                                               qvalueCutoff = qvalueCutoff))
+    if(nrow(results$KEGGup)>0){results$KEGGup$Enrichment <- paste("KEGG enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$KEGGdown <- as.data.frame(enrichKEGG(gene = entrez_down, 
+    #                                                organism = org,
+    #                                                universe = universe_Entrez, 
+    #                                                pAdjustMethod = pCorrection,
+    #                                                pvalueCutoff  = pvalueCutoff,
+    #                                                qvalueCutoff = qvalueCutoff))
+    #   if(nrow(results$KEGGdown)>0){results$KEGGdown$Enrichment <- paste("KEGG enrichment for genes downregulated in comparison ",comparison,sep="")}
+    # }
+  }
+  
+  # DO enrichment
+  if("DO" %in% GeneSets){
+    print("Performing Disease Ontology enrichment")
+    
+    results$DOup <- as.data.frame(enrichDO(gene = entrez_up, 
+                                           universe = universe_Entrez, 
+                                           pAdjustMethod = pCorrection,
+                                           pvalueCutoff  = pvalueCutoff,
+                                           qvalueCutoff = qvalueCutoff,
+                                           minGSSize     = 5,
+                                           maxGSSize     = 500,
+                                           readable=TRUE))
+    if(nrow(results$DOup)>0){results$DOup$Enrichment <- paste("DO enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$DOdown <- as.data.frame(enrichDO(gene = entrez_down, 
+    #                                            universe = universe_Entrez, 
+    #                                            pAdjustMethod = pCorrection,
+    #                                            pvalueCutoff  = pvalueCutoff,
+    #                                            qvalueCutoff = qvalueCutoff,
+    #                                            minGSSize     = 5,
+    #                                            maxGSSize     = 500,
+    #                                            readable=TRUE))
+    #   if(nrow(results$DOdown)>0){results$DOdown$Enrichment <- paste("DO enrichment for genes downregulated in comparison ",comparison,sep="")}
+    # }
+  }
+  
+  # Hallmark enrichment
+  if("Hallmark" %in% GeneSets){
+    print("Performing Hallmark enrichment")
+    
+    results$HALLMARKup <- as.data.frame(enricher(entrez_up,
+                                                 TERM2GENE=hallmark_genes,
+                                                 universe = universe_Entrez,  
+                                                 pAdjustMethod = pCorrection,
+                                                 pvalueCutoff  = pvalueCutoff,
+                                                 qvalueCutoff = qvalueCutoff))
+    if(nrow(results$HALLMARKup)>0){results$HALLMARKup$Enrichment <- paste("HALLMARK enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$HALLMARKdown <- as.data.frame(enricher(entrez_down,
+    #                                                  TERM2GENE=hallmark_genes,
+    #                                                  universe = universe_Entrez,  
+    #                                                  pAdjustMethod = pCorrection,
+    #                                                  pvalueCutoff  = pvalueCutoff,
+    #                                                  qvalueCutoff = qvalueCutoff))
+    #   if(nrow(results$HALLMARKdown)>0){results$HALLMARKdown$Enrichment <- paste("HALLMARK enrichment for genes downregulated in comparison ",comparison,sep="")}
+    # }
+  }
+  
+  # Cannonical Pathway enrichment
+  if("cannonicalPathways" %in% GeneSets){
+    print("Performing Cannonical Pathway (C2) enrichment")
+    
+    results$cannonicalPathwaysup <- as.data.frame(enricher(entrez_up,
+                                                           TERM2GENE=cannonicalPathway_genes,
+                                                           universe = universe_Entrez,  
+                                                           pAdjustMethod = pCorrection,
+                                                           pvalueCutoff  = pvalueCutoff,
+                                                           qvalueCutoff = qvalueCutoff))
+    if(nrow(results$cannonicalPathwaysup)>0){results$cannonicalPathwaysup$Enrichment <- paste("Cannonical pathway enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$cannonicalPathwaysdown <- as.data.frame(enricher(entrez_down,
+    #                                                            TERM2GENE=cannonicalPathway_genes,
+    #                                                            universe = universe_Entrez,  
+    #                                                            pAdjustMethod = pCorrection,
+    #                                                            pvalueCutoff  = pvalueCutoff,
+    #                                                            qvalueCutoff = qvalueCutoff))
+    #   if(nrow(results$cannonicalPathwaysdown)>0){results$cannonicalPathwaysdown$Enrichment <- paste("Cannonical pathway enrichment for genes downregulated in comparison ",comparison,sep="")}
+    # }
+  }
+  
+  # Motif enrichment
+  if("Motifs" %in% GeneSets){
+    print("Performing Motif enrichment")
+    
+    results$Motifup <- as.data.frame(enricher(entrez_up,
+                                              TERM2GENE=motifs,
+                                              universe = universe_Entrez,  
+                                              pAdjustMethod = pCorrection,
+                                              pvalueCutoff  = pvalueCutoff,
+                                              qvalueCutoff = qvalueCutoff))
+    if(nrow(results$Motifup)>0){results$Motifup$Enrichment <- paste("TF binding motif enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$Motifdown <- as.data.frame(enricher(entrez_down,
+    #                                               TERM2GENE=motifs,
+    #                                               universe = universe_Entrez,  
+    #                                               pAdjustMethod = pCorrection,
+    #                                               pvalueCutoff  = pvalueCutoff,
+    #                                               qvalueCutoff = qvalueCutoff))
+    #   if(nrow(results$Motifdown)>0){results$Motifdown$Enrichment <- paste("TF binding motif enrichment for genes downregulated in comparison",comparison,sep="")}
+    # }
+  }
+  
+  # Immunosignatures enrichment
+  if("ImmunoSignatures" %in% GeneSets){
+    print("Performing immunesignature enrichment")
+    
+    results$ImmSigup <- as.data.frame(enricher(entrez_up,
+                                               TERM2GENE=immuno_genes,
+                                               universe = universe_Entrez,  
+                                               pAdjustMethod = pCorrection,
+                                               pvalueCutoff  = pvalueCutoff,
+                                               qvalueCutoff = qvalueCutoff))
+    if(nrow(results$ImmSigup)>0){results$ImmSigup$Enrichment <- paste("Immunosignature enrichment for genes upregulated in comparison ",comparison,sep="")}
+    
+    # if(!is.null(genes_down)) {
+    #   results$ImmSigdown <- as.data.frame(enricher(entrez_down,
+    #                                                TERM2GENE=immuno_genes,
+    #                                                universe = universe_Entrez,  
+    #                                                pAdjustMethod = pCorrection,
+    #                                                pvalueCutoff  = pvalueCutoff,
+    #                                                qvalueCutoff = qvalueCutoff))
+    #   if(nrow(results$ImmSigdown)>0){results$ImmSigdown$Enrichment <- paste("Immunosignature enrichment for genes downregulated in comparison ",comparison,sep="")}
+    # }
+  }
+  return(results)
+}
+```
+
+### gsea dotplot
+
+```{r}
+
+dotplotGSEA <- function(x,
+                        show=25,
+                        font.size=10,
+                        title.size=10,
+                        title.width=100,
+                        order="count"){
+  if(nrow(x)<1){
+    print("No enrichment found.")
+  }else{
+    x <- if(nrow(x)>show){x[c(1:show),]}else{x}
+    if(order=="padj"){
+      x <- x[order(x$Count,decreasing=FALSE),] 
+      x <- x[order(x$p.adjust,decreasing=TRUE),]
+      x$Description <- ifelse(nchar(x$Description)<500,
+                              paste(substr(x$Description, 1, 500),"[...]",sep=""),
+                              x$Description)
+      x$Description <- factor(x$Description, levels = unique(x$Description))
+    }
+    if(order=="count"){
+      x <- x[order(x$Count,decreasing=FALSE),]
+      x$Description <- ifelse(nchar(x$Description)>500,
+                              paste(substr(x$Description, 1, 500),"[...]",sep=""),
+                              x$Description)
+      x$Description <- factor(x$Description, levels = unique(x$Description))
+      x$GeneRatio <- factor(x$GeneRatio, levels = unique(x$GeneRatio))
+    }
+    
+    ggplot(x, aes(x = GeneRatio, y = Description, color = p.adjust)) +
+      geom_point(aes(size = Count)) +
+      scale_colour_gradientn(colours=c('red', 
+                                       'orange', 
+                                       'darkblue',
+                                       'darkblue'),
+                             limits=c(0,1),
+                             values   = c(0,0.05,0.2,0.5,1),
+                             breaks   = c(0.05,0.2,1),
+                             labels = format(c(0.05,0.2,1))) +
+      ylab(NULL) +
+      ggtitle(paste(strwrap(unique(x$Enrichment), width=title.width), collapse = "\n"))+
+      theme_classic() +
+      scale_y_discrete(position = "right") +
+      theme(text = element_text(size=font.size),
+            plot.title = element_text(size=title.size)) 
+  }
+}
+
+```
+
+# load seurat object
+
+```{r}
+
+ipf_seu_mac = readRDS(file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac_momac.rds"))
+
+
+## combine mik67+ clusters
+
+ipf_seu_mac$subcluster1 = ifelse(ipf_seu_mac$subcluster %in% c(13,20),"7",as.character(ipf_seu_mac$subcluster))
+ipf_seu_mac$subcluster1 = factor(ipf_seu_mac$subcluster1,levels = c(0,"4_0","4_1","4_2",6,8,10,11,7))
+
+
+Idents(ipf_seu_mac) = "subcluster1"
+
+##use same colors for cluster 7, 13, 20
+mac_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "8" = "#73BCEB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "7" = "#6a994e")
+
+
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+```
+
+## Projecting to MoMac 
+
+```{r}
+# momac = readRDS(paste0(working.dir,"/IPF_manuscript/data/2021_MoMac_VERSE.RDS"))
+# momac_meta = momac@meta.data
+# lung_momac = subset(momac, subset=Tissue =="Lung")
+# 
+# rm(momac)
+# 
+# gc()
+# 
+# # Double check which assay your datasets are in, I think RNA assay is probably best
+# DefaultAssay(lung_momac) <- "integrated"
+# DefaultAssay(ipf_seu_mac) <- "integrated"
+# # find transfer anchors
+# Transfer.anchors <- FindTransferAnchors(reference = lung_momac, query = ipf_seu_mac,
+#                                         dims = 1:30)
+# # generate prediction scores
+# predictions <- TransferData(anchorset = Transfer.anchors, refdata = lung_momac$Clusters,
+#                             dims = 1:30)
+# # add prediction scores to metadata of your query object
+# ipf_seu_mac <- AddMetaData(ipf_seu_mac, metadata = predictions)
+# 
+# saveRDS(ipf_seu_mac, file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac_momac.rds"))
+```
+
+# figure 3B
+
+```{r}
+library(ComplexHeatmap)
+
+tmp_prediction = colnames(ipf_seu_mac@meta.data)[colnames(ipf_seu_mac@meta.data) %like% "%prediction.score%"]
+
+tmp_data = cbind(ipf_seu_mac@meta.data$subcluster1,ipf_seu_mac@meta.data[,c(tmp_prediction)])
+
+
+colnames(tmp_data)[1] = "subcluster1"
+tmp_data = tmp_data%>%
+  group_by(subcluster1)%>% 
+  summarise(across(tmp_prediction, mean)) %>% 
+  as.data.frame()
+
+rownames(tmp_data) = tmp_data$subcluster
+tmp_data = tmp_data[,-1]
+colnames(tmp_data) = str_replace(colnames(tmp_data),"prediction.score.","")
+
+## organize momac clusters based on origin
+tmp_data = tmp_data[c("4_0","4_2","4_1",6,8,0,10,11,7),c("CD16..Monocytes..1","CD16..Monocytes..5","CD16..Monocytes..8","IL1B.Monocytes..15","CD16..Monocytes..12","ISG.Monocytes..4","TREM2.Macrophage..3","C1Q.Macrophage..16","IL4I1.Macrophage..6","Macrophage..7","HES1.Macrophage..2","FTL.Macrophage..17","Proliferating.cells..10")]
+
+colnames(tmp_data) = c("CD16+Monocytes(#1)","CD16+Monocytes(#5)","CD16-Monocytes(#8)","IL1B+Monocytes(#15)","CD16-Monocytes(#12)","ISG+Monocytes(#4)","TREM2+Macrophage(#3)","C1Q+Macrophage(#16)","IL4I1+Macrophage(#6)","moDC(#7)","HES1+Macrophage(#2)","FTL+Macrophage(#17)","ProliferatingCells(#10)")
+
+
+pdf(file = paste0(ms_dir,"/fig3b.MoMac_prediction_score_",ms_date,".pdf"),paper = "a4",width = 3.5,height = 4.5)
+
+col_fun = circlize::colorRamp2(c(0,0.25,0.5,0.75, 1), c("lightblue","white","pink","red","#9d0208"))
+
+col_ha = ComplexHeatmap::HeatmapAnnotation(Type=c("ncMo","ncMo","Mo","Mo","Mo","Mo","MoMac","MoMac","MoMac","MoMac","Mac","Mac","Prolif"),
+                                           col = list(Type = c("ncMo"="grey","Mo"="pink","MoMac"="red","Mac"="lightblue","Prolif"="green")),
+                                           annotation_name_gp = gpar(fontsize=8),
+                                           gp = gpar(fontsize=8),
+                                           annotation_name_side = "left",
+                                           annotation_legend_param = list(Type=list(title="Type",at = c("ncMo","Mo","MoMac","Mac","Prolif"),labels=c("Non-classical monocyte","Monocyte","Monocyte-derived macrophage","Tissue-resident macrophage","Prolifrating cells"),title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8)))
+                                           
+)
+
+ht1 = ComplexHeatmap::Heatmap(tmp_data,
+                        name = "Prediction score",
+                        col = col_fun,
+                        cluster_rows = FALSE,
+                        cluster_columns = FALSE,
+                        # row_names_side = "right",
+                        show_row_names = FALSE,
+                        column_names_side = "top",
+                        column_title_gp = gpar(fontsize=8),
+                        column_names_gp = gpar(fontsize=8),
+                        top_annotation = col_ha,
+                        
+                        row_title_gp = gpar(fontsize=8),
+                        # row_names_gp = gpar(fontsize=8),
+                        row_title = "Clusters from present study",
+                        row_title_side = "left",
+                        column_title = "Clusters from MoMac-VERSE (Mulder et al.)",
+                        heatmap_legend_param = list(color_bar = "continuous", legend_direction = "horizontal",
+                                                    title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8),
+                                                    legend_width = unit(2, "cm")),
+                        left_annotation = ComplexHeatmap::rowAnnotation(labels = ComplexHeatmap::anno_text(c(
+    expression(Monocyte*(4*"_"*0)),
+    expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+    expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+    expression(S100A11^"+"*M*phi1*(6)),
+    expression(CXCL10^"+"*M*phi1*(8)),
+    expression(Alveolar*"-"*M*phi1*(0)),
+    expression(TNFAIP6^"+"*M*phi1*(10)),
+    expression(NEAT1^"+"*M*phi1*(11)),
+    expression(MKI67^"+"*M*phi1*(7*","*13*","*20))
+    ),gp = gpar(fontsize=8),just = "right",location = 1
+    )
+  )
+                        )
+  
+ComplexHeatmap::draw(ht1,
+                     merge_legend=TRUE,
+                        legend_grouping = "original",
+                        heatmap_legend_side = "bottom"
+                     )
+
+dev.off()
+
+ComplexHeatmap::draw(ht1,
+                     merge_legend=TRUE,
+                        legend_grouping = "original",
+                        heatmap_legend_side = "bottom"
+                     )
+
+rm(tmp_prediction,tmp_data,col_fun,col_ha,ht1)
+```
+
+# figure 3C
+
+## select momac clusters
+
+```{r}
+# # BiocManager::install("destiny")
+# library(destiny)
+# 
+# ## per momac cluster select the same number of cells
+# 
+# # # num_cells = min(table(ipf_seu_mac$subcluster))
+# num_cells = 500
+# traj_seurat = subset(ipf_seu_mac,ident=c("4_0","4_1","4_2",6,8))
+# traj_cells = traj_seurat@meta.data
+# traj_cells$cellid = rownames(traj_cells)
+# traj_cells = traj_cells %>% group_by(subcluster) %>% slice_sample(n=num_cells)
+# traj_seurat = traj_seurat[,traj_cells$cellid]
+# 
+# rm(num_cells,traj_cells)
+
+```
+
+## destiny
+
+```{r}
+# tmp_cmt = traj_seurat@reductions$pca@cell.embeddings %>% as.data.frame()
+# 
+# sigmas <- find_sigmas(tmp_cmt, verbose = FALSE)  # find optimal sigma
+# dm <- DiffusionMap(tmp_cmt, sigma = optimal_sigma(sigmas),k = 5)
+# write.csv(eigenvectors(dm),paste0(working.dir,"/IPF_manuscript/meta_data/momac_clusters_diffusionmap_20230728.csv"))
+# rm(tmp_cmt,traj_seurat,sigmas,dm)
+```
+
+## plot
+
+```{r}
+dm= read.csv(paste0(working.dir,"/IPF_manuscript/meta_data/momac_clusters_diffusionmap_20230728.csv"))
+# Plot eigenvalues of diffusion distance matrix. How many diffusion components would you use?
+# This is analagous to the PC elbow plot (scree plot) that we previously used to assess how 
+# many PCs to use in downstream applications like clustering.
+# plot(dm, ylim = 0:1, pch = 20, xlab = 'Diffusion component (DC)', ylab = 'Eigenvalue')
+
+
+
+# Plot diffusion component 1 vs diffusion component 2 (DC1 vs DC2). 
+tmp <- data.frame(DC1 = dm[, "DC1"],
+                  DC2 = dm[, "DC2"],
+                  DC3 = dm[, "DC3"],
+                  DC4 = dm[, "DC4"],
+                  subcluster = as.character(ipf_seu_mac@meta.data[dm$X,"subcluster"]),
+                  IPFgroup = ipf_seu_mac@meta.data[dm$X,"IPFgroup"],
+                  cellid = ipf_seu_mac@meta.data[dm$X,"cellID"] )
+tmp$subcluster = factor(tmp$subcluster,levels = c("4_0","4_1","4_2","6","8"))
+rownames(tmp) = tmp$cellid
+plot_color = c("4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "8" = "#73BCEB")
+
+
+plot_label = c("4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)))
+
+pdf(file = paste0(ms_dir,"/fig3c.MoMac_diffusion_map_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 2.5)
+
+p = ggplot(tmp, aes(x = DC2, y = DC4,color=subcluster)) +
+    geom_point(size=1) +
+    xlab("Diffusion component 2") +
+    ylab("Diffusion component 4") +
+  annotate("text",x=0.03,y=-0.05,label=plot_label["4_0"],color=plot_color["4_0"],size=2.5)+
+  annotate("text",x=0.07,y=-0.025,label=plot_label["8"],color=plot_color["8"],size=2.5)+
+  annotate("text",x=0.095,y=0.02,label=plot_label["4_1"],color=plot_color["4_1"],size=2.5)+
+  annotate("text",x=0.03,y=0.05,label=plot_label["6"],color=plot_color["6"],size=2.5)+
+  annotate("text",x=0.01,y=0.07,label=plot_label["4_2"],color=plot_color["4_2"],size=2.5)+
+  theme_classic()+
+    theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_text(size=8),
+        plot.title = element_text(hjust=0.5,face = "plain",size = 8),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.position = "none"
+        # legend.text = element_text(size = 8,colour = "black"),
+        # legend.text.align = 0,
+        # legend.key.size = unit(0.5,"cm"),
+        # legend.title = element_text(size = 8)
+          # legend.text = element_text(size = 20),
+          # legend.key.size  = unit(1.3,"cm")
+        )+
+  scale_color_manual(name = "Cluster",
+                     labels = plot_label,
+                     values = plot_color)
+
+plot(p)
+
+
+dev.off()
+p
+
+rm(dm,tmp,plot_color,plot_label,p)
+```
+
+# figure 3D temperary genes
+
+```{r}
+# install.packages("gam")
+library(gam)
+
+dm= read.csv(paste0(working.dir,"/IPF_manuscript/meta_data/momac_clusters_diffusionmap_20230728.csv"))
+# Plot eigenvalues of diffusion distance matrix. How many diffusion components would you use?
+# This is analagous to the PC elbow plot (scree plot) that we previously used to assess how 
+# many PCs to use in downstream applications like clustering.
+# plot(dm, ylim = 0:1, pch = 20, xlab = 'Diffusion component (DC)', ylab = 'Eigenvalue')
+
+
+
+# Plot diffusion component 1 vs diffusion component 2 (DC1 vs DC2). 
+tmp <- data.frame(DC1 = dm[, "DC1"],
+                  DC2 = dm[, "DC2"],
+                  DC3 = dm[, "DC3"],
+                  DC4 = dm[, "DC4"],
+                  subcluster = as.character(ipf_seu_mac@meta.data[dm$X,"subcluster"]),
+                  IPFgroup = ipf_seu_mac@meta.data[dm$X,"IPFgroup"],
+                  cellid = ipf_seu_mac@meta.data[dm$X,"cellID"] )
+tmp$subcluster = factor(tmp$subcluster,levels = c("4_0","4_1","4_2","6","8"))
+rownames(tmp) = tmp$cellid
+
+dm1 = subset(tmp,subcluster == "4_0"| subcluster == "4_2")
+
+ipf_seu_mac_dm = ipf_seu_mac[,rownames(dm1)]
+ipf_seu_mac_dm$pseudo = dm1$DC4
+
+# Fit GAM for each gene using pseudotime as independent variable.
+t <- ipf_seu_mac_dm$pseudo
+gam.pval <- apply(ipf_seu_mac_dm@assays$integrated@data, 1, function(z){
+  d <- data.frame(z=z, t=t)
+  tmp <- gam(z ~ lo(t), data=d)
+  p <- summary(tmp)[4][[1]][1,5]
+  p
+  
+})
+
+gam.coe <- apply(ipf_seu_mac_dm@assays$integrated@data, 1, function(z){
+  d <- data.frame(z=z, t=t)
+  tmp <- gam(z ~ lo(t), data=d)
+  # p <- summary(tmp)[1][[2]][2]
+  # p = tmp[[1]][2][[1]][2]
+  tmp
+  
+})
+
+gam.coe1 = sapply(gam.coe,function(z){ 
+  p = z[2][1][[1]][2] 
+  p
+  })
+
+gam.resu = cbind(gam.pval,gam.coe1)
+colnames(gam.resu) = c("pval","coe")
+
+gam.resu1 = subset(as.data.frame(gam.resu),pval < 0.001)
+downgenes = gam.resu1[order(gam.resu1$coe),]  
+topgenes = gam.resu1[order(gam.resu1$coe,decreasing = TRUE),]
+```
+
+## order pseudotime
+
+```{r}
+### order pseudotime
+
+t1 = as.data.frame(t)
+t1$cellid = rownames(t1)
+t1 = t1[order(t1$t,decreasing = FALSE),]
+
+dm1_plot = ipf_seu_mac_dm@assays$integrated@scale.data[c(rownames(downgenes)[1:15],rownames(topgenes)[1:15]),t1$cellid]
+
+dm1_plot1 = ipf_seu_mac_dm@meta.data[t1$cellid,"subcluster1"]
+
+# library(ComplexHeatmap)
+
+pdf(file = paste0(ms_dir,"/fig3D.MoMac_pseudotime_deg_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 3.5)
+
+col_fun = circlize::colorRamp2(c(-3,-2.5,0,2.5, 3), c("blue","lightblue","white","pink","#9d0208"))
+p  = ComplexHeatmap::Heatmap(as.matrix(dm1_plot),
+                             name = "Expression",
+                             col = col_fun,
+                             border = TRUE,
+                        top_annotation = HeatmapAnnotation(
+                                                           Pseudotime = t1$t,
+                                                           annotation_name_gp = gpar(fontsize=8),
+                                                           show_legend = FALSE,
+                                                           col = list(Pseudotime = circlize::colorRamp2(c(min(t1$t),mean(t1$t),max(t1$t)),c("blue","pink","yellow"))),
+                                                           annotation_legend_param = list(title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8))
+                                                           ),
+                        # column_split = 2,
+                        # column_title = c("Monocyte","SPP1"),
+                        row_names_gp = gpar(fontsize=8),
+                        
+                        cluster_rows = FALSE,
+                        cluster_columns = FALSE,
+                        show_column_names = FALSE,
+                        heatmap_legend_param = list(color_bar = "continuous", legend_direction = "vertical",
+                                                    title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8),
+                                                    legend_width = unit(2, "cm"))
+                        )
+draw(p,heatmap_legend_side = "right",merge_legend=TRUE)
+
+dev.off()
+
+draw(p,heatmap_legend_side = "right",merge_legend=TRUE)
+
+rm(dm,tmp,dm1,ipf_seu_mac_dm,t,gam.pval,gam.coe,gam.coe1,gam.resu,gam.resu1,downgenes, topgenes, t1, dm1_plot,dm1_plot1,col_fun,p)
+```
+
+# figure 3F
+
+
+```{r}
+library(ComplexHeatmap)
+
+momac_stim = read.csv(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/Xue_momac_stimulation_score.csv"))
+tmp_prediction = colnames(momac_stim)[colnames(momac_stim) %like% "%momac%"]
+tmp_data = cbind(momac_stim$subcluster1,momac_stim[,tmp_prediction])
+
+
+colnames(tmp_data)[1] = "subcluster"
+tmp_data = tmp_data%>%
+  group_by(subcluster)%>% 
+  summarise(across(tmp_prediction, mean)) %>% 
+  as.data.frame()
+
+rownames(tmp_data) = tmp_data$subcluster
+tmp_data = tmp_data[,-1]
+colnames(tmp_data) = str_replace(colnames(tmp_data),"momac","")
+colnames(tmp_data) = substr(colnames(tmp_data),1,nchar(colnames(tmp_data))-1)
+
+## organize momac clusters based on origin
+tmp_data = tmp_data[c(0,"4_0","4_1","4_2",6,8,10,11,7),]
+
+pdf(file = paste0(ms_dir,"/fig3f_Xu_Momac_stimulation",ms_date,".pdf"),paper = "a4",width = 5,height =3)
+
+col_fun = circlize::colorRamp2(c(-3, 0, 3), c("#a8dadc","white","#9d0208"))
+
+ht1 = ComplexHeatmap::Heatmap(scale(tmp_data),
+                        name = "Scaled prediction score",
+                        col = col_fun,
+                        cluster_rows = FALSE,
+                        cluster_columns = TRUE,
+                        # row_names_side = "left",
+                        show_row_names = FALSE,
+                        show_heatmap_legend = FALSE,
+                        column_names_side = "bottom",
+                        column_names_gp = gpar(fontsize=8),
+                        column_title_gp = gpar(fontsize=8),
+                        row_names_gp = gpar(fontsize=8),
+                        row_title_gp = gpar(fontsize=8),
+                        row_title = "",
+                        column_title = "Stimulated MoMacs (Xue et al.)",
+                        heatmap_legend_param = list(color_bar = "continuous", legend_direction = "horizontal",
+                                                    title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8),
+                                                    legend_width = unit(2, "cm"))
+                        )+
+  ComplexHeatmap::rowAnnotation(labels = ComplexHeatmap::anno_text(c(
+    expression(Alveolar*"-"*M*phi1*(0)),
+    expression(Monocyte*(4*"_"*0)),
+    expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+    expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+    expression(S100A11^"+"*M*phi1*(6)),
+    expression(CXCL10^"+"*M*phi1*(8)),
+    expression(TNFAIP6^"+"*M*phi1*(10)),
+    expression(NEAT1^"+"*M*phi1*(11)),
+    expression(MKI67^"+"*M*phi1*(7*","*13*","*20))
+    ),gp = gpar(fontsize=8)
+    # just = "right",location = 1
+    )
+    )
+
+lgd = Legend(title="Scaled score",col_fun = col_fun,direction = "horizontal",grid_width = unit(2,"cm"),title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8))
+
+ComplexHeatmap::draw(ht1)
+ComplexHeatmap::draw(lgd,x=unit(0.9,"npc"),y=unit(0.2,"npc"))
+
+dev.off()
+
+ComplexHeatmap::draw(ht1)
+ComplexHeatmap::draw(lgd,x=unit(0.9,"npc"),y=unit(0.2,"npc"))
+
+rm(tmp_prediction,tmp_data,col_fun,ht1,lgd,momac_stim)
+```
+
+# figure 3G
+
+## GSEA
+
+take avg_log2FC > 0.25
+
+```{r}
+# run1to4_ck_ipf_n_copd_ck_deg = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/ILD_combined_sct_rpca20230720_mac_subcluster_deg.csv"))
+# 
+# gsea_data = data.frame()
+# for(i in c("7","4_0","6","13","20","4_1","8","10","11","4_2")){
+# # for(i in c("4_2")){  
+#   tmp_genes = subset(run1to4_ck_ipf_n_copd_ck_deg,cluster==i & avg_log2FC > 0.25)
+# 
+#   tmp_gsea = GSEA_calc_gene(gene_list = rownames(ipf_seu_mac),
+#                           DEG_list = tmp_genes$gene,
+#                            comparison = NULL,
+#                            species = "H", # H for human
+#                            genes_down = NULL,
+#                            genes_all = NULL,
+#                            # GeneSets =c("GO","KEGG","DO","Hallmark","cannonicalPathways","Motifs","ImmunoSignatures"),
+#                           GeneSets =c("GO"),
+#                            GOntology = "BP", #Alternative "MF" or "CC"
+#                            pCorrection = "bonferroni", # choose the p-value adjustment method
+#                            pvalueCutoff = 1, # set the unadj. or adj. p-value cutoff (depending on correction method)
+#                            qvalueCutoff = 1 # set the q-value cutoff (FDR corrected))
+#   )
+#   
+#   tmp_gsea1 = tmp_gsea$GOup
+#   tmp_gsea1$cluster = i
+#   
+#   if(i == 7 ){
+#     gsea_data = tmp_gsea1
+#   }else(
+#     gsea_data = rbind(gsea_data,tmp_gsea1)
+#   )
+#   
+# }
+# 
+# rm(run1to4_ck_ipf_n_copd_ck_deg,i,tmp_genes,tmp_gsea,tmp_gsea1)
+# 
+# write.csv(gsea_data,file = paste0(working.dir,"/IPF_manuscript/meta_data/GSEA_allmac.csv"))
+```
+
+## plot network
+
+```{r}
+run1to4_ck_ipf_n_copd_ck_deg = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/ILD_combined_sct_rpca20230720_mac_subcluster_deg.csv"))
+tmp_genes = subset(run1to4_ck_ipf_n_copd_ck_deg,cluster=="4_2" & avg_log2FC > 0.25)
+
+universe_Entrez <- bitr(rownames(ipf_seu_mac@assays$RNA@counts), 
+                          fromType="SYMBOL", 
+                          toType="ENTREZID", 
+                          OrgDb="org.Hs.eg.db")$ENTREZID
+
+
+entrez_up <- bitr(tmp_genes$gene, fromType = "SYMBOL", toType="ENTREZID", OrgDb=org.Hs.eg.db)$ENTREZID
+  
+OrgDb = org.Hs.eg.db
+  
+
+GO_res = enrichGO(gene = entrez_up,
+                                           universe = universe_Entrez,
+                                           OrgDb = OrgDb,
+                                           ont = "BP",
+                                           pAdjustMethod = "bonferroni",
+                                           pvalueCutoff  = 0.1,
+                                           qvalueCutoff  = 0.2,
+                                           readable      = T
+         )
+# GO_resx = setReadable(GO_res,"org.Hs.eg.db","ENTREZID")
+
+rm(run1to4_ck_ipf_n_copd_ck_deg,tmp_genes,universe_Entrez,entrez_up,OrgDb)
+
+pdf(file = paste0(ms_dir,"/fig3g.SPP1.GSEA_network_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 2.5)
+
+# a ggraph object
+
+layout = c('star', 'circle', 'gem', 'dh', 'graphopt', 'grid', 'mds', 'randomly', 'fr', 'kk', 'drl' ,'lgl')
+# for(i in c(1:length(layout))){
+i = 10
+  p = enrichplot::cnetplot(GO_res,
+                     layout = layout[i],
+                     node_label = "gene",
+                     color_category = c("green","lightblue","pink","red","brown"),
+                     circular = FALSE,
+                     cex_gene = 0.01,
+                     cex_catogery = 0.3,
+                     cex_label_gene = 0.3,
+                     # cex_label_category = 0.5,
+                     colorEdge =  FALSE
+                     )
+  label_color = p$data[1:5,]
+
+   p = p+ ggraph::geom_node_text(data = label_color,aes(x,y,label=stringr::str_wrap(label_color$name,17),color=color),repel = TRUE,size=2.5)+
+  # ggrepel::geom_text_repel()+
+  theme(legend.position = "none")
+
+  plot(p)
+# }
+
+  
+
+dev.off()
+
+plot(p)
+
+rm(p,layout,i,label_color, GO_res)
+```
+
+# figure 3H
+
+
+## image 20230306SPP1_CD206_BODIPY_DAPI_63x9
+
+```{r}
+intensity = read.csv(paste0(working.dir, "/IPF_manuscript/meta_data/imaging_results/20230306SPP1_CD206_BODIPY_DAPI_63x9_FijiResults.csv"),header = TRUE)
+num_points = 6
+
+intensity$point = rep(paste0("point",c(1:num_points)),4)
+intensity$marker = c(rep("SPP1",num_points),rep("CD206",num_points),rep("Bodipy",num_points),rep("DAPI",num_points))
+
+intensity$image = "20230306SPP1_CD206_BODIPY_DAPI_63x9"
+
+intensity_tmp = tidyr::pivot_wider(intensity[,c("point","marker","Mean")],names_from = marker,values_from = Mean)
+```
+
+### CD206 vs SPP1
+
+```{r}
+
+ggplot(intensity_tmp,aes(CD206,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,30))+
+  ylim(c(0,255))
+```
+
+### Bodipy vs SPP1
+
+```{r}
+ggplot(intensity_tmp,aes(Bodipy,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,255))+
+  ylim(c(0,255))
+```
+
+### remove non macrophages
+
+```{r}
+intensity$note = ifelse(intensity$point %in% c("point2","point5"),"nonMac","Mac")
+```
+
+
+### rename file
+
+```{r}
+intensity9=intensity
+
+rm(intensity,intensity_tmp)
+
+```
+
+## image 20230306SPP1_CD206_BODIPY_DAPI_63x12
+
+```{r}
+intensity = read.csv(paste0(working.dir, "/IPF_manuscript/meta_data/imaging_results/20230306SPP1_CD206_BODIPY_DAPI_63x12_FijiResults.csv"),header = TRUE)
+num_points = 5
+
+intensity$point = rep(paste0("point",c(1:num_points)),4)
+intensity$marker = c(rep("SPP1",num_points),rep("CD206",num_points),rep("Bodipy",num_points),rep("DAPI",num_points))
+
+intensity$image = "20230306SPP1_CD206_BODIPY_DAPI_63x12"
+
+intensity_tmp = tidyr::pivot_wider(intensity[,c("point","marker","Mean")],names_from = marker,values_from = Mean)
+```
+
+### CD206 vs SPP1
+
+```{r}
+
+ggplot(intensity_tmp,aes(CD206,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,30))+
+  ylim(c(0,255))
+```
+
+### Bodipy vs SPP1
+
+```{r}
+ggplot(intensity_tmp,aes(Bodipy,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,255))+
+  ylim(c(0,255))
+```
+
+### remove non macrophages
+
+```{r}
+intensity$note = ifelse(intensity$point %in% c("point4"),"nonMac","Mac")
+```
+
+
+### rename file
+
+```{r}
+intensity12=intensity
+
+rm(intensity,intensity_tmp)
+```
+
+## image 20230306SPP1_CD206_BODIPY_DAPI_63x13
+
+
+```{r}
+intensity = read.csv(paste0(working.dir, "/IPF_manuscript/meta_data/imaging_results/20230306SPP1_CD206_BODIPY_DAPI_63x13_FijiResults.csv"),header = TRUE)
+num_points = 6
+
+intensity$point = rep(paste0("point",c(1:num_points)),4)
+intensity$marker = c(rep("SPP1",num_points),rep("CD206",num_points),rep("Bodipy",num_points),rep("DAPI",num_points))
+
+intensity$image = "20230306SPP1_CD206_BODIPY_DAPI_63x13"
+
+intensity_tmp = tidyr::pivot_wider(intensity[,c("point","marker","Mean")],names_from = marker,values_from = Mean)
+```
+
+### CD206 vs SPP1
+
+```{r}
+
+ggplot(intensity_tmp,aes(CD206,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,30))+
+  ylim(c(0,255))
+```
+
+### Bodipy vs SPP1
+
+```{r}
+ggplot(intensity_tmp,aes(Bodipy,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,255))+
+  ylim(c(0,255))
+```
+
+### remove non macrophages
+
+based on shape 
+
+```{r}
+intensity$note = ifelse(intensity$point %in% c(),"nonMac","Mac")
+```
+
+
+### rename file
+
+```{r}
+intensity13=intensity
+
+rm(intensity,intensity_tmp)
+```
+
+## image 20230306SPP1_CD206_BODIPY_DAPI_63x14
+
+
+```{r}
+intensity = read.csv(paste0(working.dir, "/IPF_manuscript/meta_data/imaging_results/20230306SPP1_CD206_BODIPY_DAPI_63x14_FijiResults.csv"),header = TRUE)
+num_points = 5
+
+intensity$point = rep(paste0("point",c(1:num_points)),4)
+intensity$marker = c(rep("SPP1",num_points),rep("CD206",num_points),rep("Bodipy",num_points),rep("DAPI",num_points))
+
+intensity$image = "20230306SPP1_CD206_BODIPY_DAPI_63x14"
+
+intensity_tmp = tidyr::pivot_wider(intensity[,c("point","marker","Mean")],names_from = marker,values_from = Mean)
+```
+
+### CD206 vs SPP1
+
+```{r}
+
+ggplot(intensity_tmp,aes(CD206,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,30))+
+  ylim(c(0,255))
+```
+
+### Bodipy vs SPP1
+
+```{r}
+ggplot(intensity_tmp,aes(Bodipy,SPP1,label=point))+
+  geom_point()+
+  geom_text()+
+  xlim(c(0,255))+
+  ylim(c(0,255))
+```
+
+### remove non macrophages
+
+based on shape 
+
+```{r}
+intensity$note = ifelse(intensity$point %in% c("point3"),"nonMac","Mac")
+```
+### rename file
+
+```{r}
+intensity14=intensity
+
+rm(intensity,intensity_tmp)
+```
+
+## combine all together
+
+```{r}
+com_int = rbind(intensity9,intensity12,intensity13,intensity14)
+com_int$point = paste0(com_int$image,com_int$point)
+com_int1 = subset(com_int,note == "Mac")
+
+com_int_tmp = tidyr::pivot_wider(com_int1[,c("point","marker","Mean")],names_from = marker,values_from = Mean)
+
+com_int_tmp$SPP1_group = ifelse(com_int_tmp$SPP1>150,"SPP1_high","SPP1_low")
+
+ggplot(com_int_tmp,aes(Bodipy,SPP1,label=point,size=CD206))+
+  geom_point()+
+  # geom_text()+
+  xlim(c(0,255))+
+  ylim(c(0,255))
+
+ggplot(com_int_tmp,aes(SPP1_group,Bodipy))+
+  geom_boxplot()+
+  geom_point()
+```
+
+# plot figure 3H
+
+```{r}
+pdf(file = paste0(ms_dir,"/fig3h.SPP1_bodipy_imaging_",ms_date,".pdf"),paper = "a4",width = 1.8,height = 2.2)
+
+my_comparisons <- list( c("SPP1_low","SPP1_high"))
+my_color = c("SPP1_low"="#344e41","SPP1_high"="#ffafcc")
+
+# remotes::install_github("clauswilke/ggtext")
+library(ggtext)
+com_int_tmp$SPP1_group = factor(com_int_tmp$SPP1_group,levels = c("SPP1_low","SPP1_high"))
+                        
+p = ggplot(com_int_tmp,aes(SPP1_group,Bodipy,fill=SPP1_group,size=CD206))+
+  geom_boxplot(outlier.colour="red", outlier.shape=8,outlier.size=4)+
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0.7,fill="white")+
+  scale_fill_manual(values = my_color)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  ylim(c(0,150))+
+  # geom_jitter(shape=16)+
+  theme_classic()+
+   # labs(title = paste0(i,":Wilcox test p =", res$p.value))+
+   # labs(title = i)+
+  ylab(label = paste0("Bodipy mean intensity"))+
+  xlab("")+
+  scale_x_discrete(labels=c(expression(SPP1^"-" * M*phi),expression(SPP1^"+" * M*phi)))+
+   theme(axis.text.x = element_text(size = 8),
+         axis.text.y = element_text(size = 8),
+         axis.title.y = element_text(size = 8),
+         legend.position = "none")
+
+
+plot(p)
+dev.off()
+p
+rm(intensity9,intensity12,intensity13,intensity14,com_int,com_int1,my_comparisons,my_color,num_points)
+```
+
+# plot figure S4C
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs4c.SPP1_bodipy_imaging_",ms_date,".pdf"),paper = "a4",width = 3.8,height = 2.5)
+
+my_color = c("SPP1_low"="#344e41","SPP1_high"="#ffafcc")
+
+library(ggtext)
+com_int_tmp$SPP1_group = factor(com_int_tmp$SPP1_group,levels = c("SPP1_low","SPP1_high"))
+                        
+p = ggplot(com_int_tmp,aes(x=Bodipy,y=SPP1,color=SPP1_group,size=CD206))+
+  geom_point()+
+  scale_color_manual(name = "Group",values = my_color,labels=c("SPP1_low"=expression(SPP1^"-" * M*phi),"SPP1_high"=expression(SPP1^"+" * M*phi)))+
+  scale_size(breaks = c(10,20,30))+
+  xlim(c(0,150))+
+  theme_classic()+
+  xlab(label = paste0("Bodipy mean intensity"))+
+  ylab(label = paste0("SPP1 mean intensity"))+
+  # scale_x_discrete(labels=c(expression(SPP1^"-" * M*phi),expression(SPP1^"+" * M*phi)))+
+   theme(axis.text = element_text(size = 8),
+         # axis.text = element_text(size = 8),
+         axis.title = element_text(size = 8),
+         legend.title = element_text(size=8),
+         legend.text = element_text(size=8),
+         legend.position = "left")+
+  guides(size = guide_legend(order = 1,title = "CD206 mean intensity"))
+         # color = guide_colorbar(order = 2,title = "Group"))
+
+plot(p)
+dev.off()
+
+p
+rm(p)
+```
+
+# figure S4A
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs4a.TREM2+_prediction_score_",ms_date,".pdf"),paper = "a4",width = 3,height = 2.5)
+
+##use same colors for cluster 7, 13, 20
+mac_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "7" = "#6a994e",
+                             "8" = "#73BCEB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "13" = "#6a994e",
+                             "20" = "#6a994e")
+
+
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+p = VlnPlot(ipf_seu_mac,features = c("prediction.score.TREM2.Macrophage..3"),pt.size = 0,group.by = "subcluster1")+
+  xlab("")+
+  ylab("Prediction score")+
+  labs(title = expression(TREM2^"+"*M*phi1*"("*Mulder*" "*et*" "*al*")"))+
+  scale_fill_manual(values = mac_color)+
+  scale_x_discrete(labels = mac_label)+
+  coord_flip()+
+  theme(axis.text.x = element_text(angle = 0, vjust = 0, hjust=0.5,size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_text(size = 8),
+        plot.title = element_text(size = 8,face = "plain"),
+        plot.title.position = "plot",
+        legend.position = "none")+
+  scale_fill_manual(name = "Cluster",
+                     labels = mac_label[1:9],
+                     values = mac_color[1:9])
+plot(p)
+
+dev.off()
+
+p
+
+rm(mac_color,mac_label,p)
+```
+
+# figure S4b
+
+```{r}
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+gsea_data = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/GSEA_allmac.csv"))
+test = gsea_data[!gsea_data$cluster %in% c(7,13,20),]
+test = subset(test,p.adjust<0.00001)  
+test = gsea_data[rownames(gsea_data) %in% rownames(test),]
+# %>% group_by(cluster) %>% top_n(n = 5, wt = Count)
+# test = subset(test,p.adjust < 0.0001)
+
+test$cluster = factor(test$cluster,levels = c("4_0","4_1","4_2",6,8,10,11))
+test = test[order(test$cluster),]
+test$Description = factor(test$Description,levels = unique(test$Description))
+
+pdf(file = paste0(ms_dir,"/figs4b.allMac.GSEA_",ms_date,".pdf"),paper = "a4",width = 7,height = 4)
+
+p = ggplot(test, aes(x = cluster, y = Description, color = p.adjust)) +
+      geom_point(aes(size = Count)) +
+      scale_x_discrete(labels = mac_label)+
+      scale_size(breaks = c(5,10,15))+
+      # scale_colour_gradientn(colours=c('red',
+      #                                  'orange',
+      #                                  'darkblue'),
+      #                        # limits=c(0,0.05),
+      #                        values   = c(0,0.00001,0.001)
+      #                        # breaks   = c(0,0.001,0.05),
+      #                        # labels = format(c(0,0.001,0.05))
+      #                        ) +
+      ylab(NULL) +
+      xlab(NULL) +
+      # ggtitle(paste(strwrap(unique(x$Enrichment), width=title.width), collapse = "\n"))+
+      theme_classic() +
+      scale_y_discrete(position = "left") +
+      coord_flip()+
+      theme(text = element_text(size=8),
+            plot.title = element_text(size=8),
+            axis.text = element_text(size=6),
+            axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+            legend.position = "top") +
+            # legend.box.margin = margin(-250,0,0,0))+
+      guides(size = guide_legend(order = 1,title = "Count"),
+         color = guide_colorbar(order = 2,title = "p.adjust",barheight = 0.5,barwidth=8))
+plot(p)
+dev.off()
+p
+
+rm(test,gsea_data,mac_label,p)
+```
+
+
+# figure S4D
+
+
+## load seurat object
+
+```{r}
+
+ipf_seu_mac = readRDS(file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac.rds"))
+
+
+Idents(ipf_seu_mac) = "subcluster"
+
+##use same colors for cluster 7, 13, 20
+mac_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "7" = "#6a994e",
+                             "8" = "#73BCEB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "13" = "#6a994e",
+                             "20" = "#6a994e")
+
+
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+```
+
+## plot figure 
+
+```{r}
+
+ipf_seu_mac$subcluster1 = ifelse(ipf_seu_mac$subcluster %in% c(13,20),"7",as.character(ipf_seu_mac$subcluster))
+ipf_seu_mac$subcluster1 = factor(ipf_seu_mac$subcluster1,levels = c(0,"4_0","4_1","4_2",6,8,10,11,7))
+
+Idents(ipf_seu_mac) = "subcluster1"
+ipf_seu_mac$IPFgroup = factor(ipf_seu_mac$IPFgroup,levels = c("Control","Early-IPF","Advanced-IPF"))
+DefaultAssay(ipf_seu_mac) = "RNA"
+
+plot_label = c("0" = "0",
+               "4_0" = "4_0",
+               "4_1" = "4_1",
+               "4_2" = "4_2",
+               "6" = "6",
+               "8" = "8",
+               "10" = "10",
+               "11" = "11",
+               "7" = "7,13,20"
+               )
+
+plot_color =  c(
+                "Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#E0B32D"
+                )
+
+p1 = VlnPlot(ipf_seu_mac,features = c("LPL"),split.by = "IPFgroup",pt.size = 0,group.by = "subcluster1",cols = plot_color)+
+  # coord_flip()+
+  scale_x_discrete(labels = plot_label)+
+  ylab(label = "Expression level")+
+  theme(axis.text.y = element_text(size=8),
+        axis.text.x = element_text(size=8,angle = 90),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=8),
+        plot.title = element_text(size=8,face = "plain",margin = margin(0,0,-2,0)),
+        plot.margin = unit(c(-10,0,-10,0),units = "cm"),
+    legend.position = "none")
+
+p2 = VlnPlot(ipf_seu_mac,features = c("LIPA"),split.by = "IPFgroup",pt.size = 0,cols = plot_color)+
+  scale_x_discrete(labels = plot_label)+
+  ylab(label = "Expression level")+
+  theme(axis.text.y = element_text(size=8),
+        axis.text.x = element_text(size=8,angle = 90),
+        axis.title = element_blank(),
+        # axis.title.y = element_text(size=8),
+        plot.title = element_text(size=8,face = "plain",margin = margin(0,0,-2,0)),
+        plot.margin = unit(c(-10,0,-10,0),units = "cm"),
+    legend.position = "none")
+
+p3 = VlnPlot(ipf_seu_mac,features = c("CCL18"),split.by = "IPFgroup",pt.size = 0,cols = plot_color)+
+  scale_x_discrete(labels = plot_label)+
+  labs(title = "CCL18 (mRNA)")+
+  ylab(label = "Expression level")+
+  theme(axis.text.y = element_text(size=8),
+        axis.text.x = element_text(size=8,angle = 90),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=8),
+        plot.title = element_text(size=8,face = "plain",margin = margin(0,0,-2,0)),
+        plot.margin = unit(c(-10,0,-10,0),units = "cm"),
+    legend.position = "none")
+
+p4 = ggplot()+
+  geom_point(aes(1,1,colour = "Control"))+
+  geom_point(aes(2,2,colour = "Early-IPF"))+
+  geom_point(aes(3,3,colour = "Advanced-IPF"))+
+  scale_color_manual(values = plot_color)+
+  theme(legend.text = element_text(size = 8,colour = "black"),
+        legend.title = element_text(size = 8,colour = "black"),
+        legend.background = element_blank(),
+        legend.key = element_blank(),
+        plot.margin = margin(0,0,0,-10,"cm"))+
+  guides(color=guide_legend(title = "Group"))
+
+p4 = cowplot::get_legend(p4)
+
+pdf(file = paste0(ms_dir,"/figs4d_LIPA_LPL_vlnplot",ms_date,".pdf"),paper = "a4",width = 7,height = 2)
+ggpubr::ggarrange(p1,p2,p4,nrow = 1,ncol = 3,widths = c(3.1,3.1,0.8))
+dev.off()
+
+ggpubr::ggarrange(p1,p2,p4,nrow = 1,ncol = 3,widths = c(3.1,3.1,0.8))
+
+##pdf(file = paste0(ms_dir,"/fig3b_CCL18_vlnplot",ms_date,".pdf"),paper = "a4",width = 5,height = 2)
+# ggpubr::ggarrange(p3,p4,nrow = 1,ncol = 2,widths = c(4,1))
+##dev.off()
+
+rm(p1,p2,p3,p4,plot_label,plot_color)
+```
+
+# session
+
+```{r,results='asis'}
+
+sessionInfo()
+```
+

@@ -1,0 +1,461 @@
+---
+title: "IPF_paper_figure1"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+# general settings
+
+```{r}
+library(magrittr)
+library(ComplexHeatmap)
+library(ggplot2)
+
+working.dir = "/home/jyu/rstudio/"
+
+ms_dir = paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures")
+ms_date = "20230921"
+
+```
+
+## color
+
+```{r}
+stage_color = c("Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#C6A775")
+```
+
+
+# 20221017 clustering analysis of pulmonary function parameters
+
+take following parameters: age, VC%, FEV1%, FVC%, DLCO%, TLC%
+
+```{r}
+input = readxl::read_xlsx(path = paste0(working.dir,"/IPF_manuscript/meta_data/prevalent_all_incident.xlsx"),sheet = "Sheet1")
+
+input$medication_group = ifelse(input$medication == "no", "no", "yes")
+
+# only focus on IPF patients and controls
+input = input[input$Dx %in% c("IPF","Control"),]
+
+input$genderNum = ifelse(input$Gender == "female", 0, 1)
+input$smokingNum = ifelse(input$smoking == "nd",0,
+                                ifelse(input$smoking == "ex",1,
+                                       ifelse(input$smoking == "yes",2,3)))
+
+input=input[!is.na(input$identifier),]
+
+rownames(input) = input$identifier
+
+library(Amelia)
+
+# remove prevalent 2 patients which have no data for lung function parameters
+input = input[!rownames(input) %in% c("IPF4","IPF2718174"),]
+input[input=="nd"] = NA
+
+## integrate FVC and VC information
+input$FVCorVC_percent = ifelse(is.na(input$FVC_percent),input$VC_percent,input$FVC_percent)
+
+
+```
+## select lung function para
+
+```{r}
+# input$FVCorVC_percent = ifelse(is.na(input$FVC_percent),input$VC_percent,input$FVC_percent)
+# # cols.num <- c("Age","FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+# cols.num <- c("FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+# 
+# # test = subset(input,cohort=="prevalent")
+# test = input[,cols.num]
+# test <- sapply(test,as.numeric)
+# 
+# 
+# # library("PerformanceAnalytics")
+# # chart.Correlation(test, histogram=TRUE, pch=19)
+# 
+# rm(test)
+```
+
+### impute data
+
+```{r}
+# cols.num <- c("Age","FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+# 
+# 
+# test = input[,cols.num]
+# test <- sapply(test,as.numeric)
+# rownames(test) = input$identifier
+# # rownames(test) = paste0("group",tmp_data$group,"_",rownames(tmp_data))
+# impute_data = amelia(as.data.frame(test),m = 5,parallel = "multicore")
+# impute_cluster = dist(scale(impute_data$imputations$imp5)) %>% hclust()
+# # write.csv(impute_data$imputations$imp1,file = paste0(working.dir,"/clinical_phenotype/20221205_imputed_data_7parameters.csv"))
+# rm(test)
+```
+
+### clustering
+
+```{r, fig.width=8, fig.height=12}
+impute_data = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/20221205_imputed_data_7parameters.csv"),row.names = 1)
+cols.num <- c("FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+
+impute_data = impute_data[,cols.num]
+
+impute_cluster = dist(scale(impute_data)) %>% hclust()
+
+# plot(impute_cluster)
+# 
+p = ComplexHeatmap::Heatmap(scale(impute_data),
+                            clustering_distance_rows = "euclidean",
+                            clustering_distance_columns = "euclidean")
+
+# p
+```
+
+### save cluster information
+
+it contains scaled values for all parameters
+
+```{r}
+p_matrix = p@matrix
+
+p_order = ComplexHeatmap::row_order(p)
+
+test = p_matrix[p_order,]
+
+# write.csv(test,file = paste0(working.dir,"/20230605_scaledvalue_patient_stages.csv"))
+
+rm(test,p,p_order,p_matrix,impute_cluster,impute_data,cols.num)
+```
+
+# Figure S1
+
+## Figure S1A
+
+```{r}
+cols.num <- c("Age","Opacity","OpacityScore","AvgGroundglass","AvgReticular","AvgnormalLung","VC","VC_percent","FEV1","FEV1_percent","TLC_percent","TLC","DLCO_percent","pO2","pCO2")
+
+cols.num.anno = c("Age","Opacity","Opacity Score","Ground glass","Reticular","NormalLung","VC","VC predicted","FEV1","FEV1 predicted","TLC predicted","TLC","DLCO predicted","pO2","pCO2")
+
+test = subset(input,cohort=="prevalent")
+# test = input
+test = test[,cols.num]
+
+colnames(test) = cols.num.anno
+
+test <- sapply(test,as.numeric)
+
+# BiocManager::install("PerformanceAnalytics")
+
+# library("PerformanceAnalytics")
+# chart.Correlation(test, 
+#                   histogram=TRUE, 
+#                   method = "pearson",
+#                   pch=16)
+# 
+cor_test_mat <- psych::corr.test(cor(test,use = "complete.obs"))$p    # Apply corr.test function
+# cor_test_mat 
+
+pdf(file = paste0(ms_dir,"/figs1a.para.correlation_",ms_date,".pdf"),width = 6,height = 6)
+p = cor(test,use = "complete.obs") %>% 
+  corrplot::corrplot(.,
+                     type="upper", 
+                     order="original", 
+                     bg = "#00000000",
+                     col=colorRampPalette(c("blue","white","red"))(200),
+                     p.mat = cor_test_mat,
+                     sig.level = c(0.001, 0.01, 0.05), 
+                     pch.cex = 0.9,
+                     insig = 'label_sig', 
+                     pch.col = 'grey20',
+                     # col = c("lightblue","white","red"),
+                     tl.col="black", 
+                     tl.srt=90,
+                     cl.pos = "b",
+                     cl.ratio=0.2
+                     )
+
+print(p)
+# plot(c(1,1))
+text(x=2,y=2,"Pearson correlation coefficient")
+
+dev.off()
+p
+rm(cols.num,cols.num.anno,test,cor_test_mat,p)
+```
+
+## figure S1B
+
+```{r}
+pnt_stage = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/20230605_scaledvalue_patient_stages.csv"))
+
+pnt_stage = merge(pnt_stage,input,by.x="identifier",by.y="identifier")
+
+plot_list = list()
+pdf(file = paste0(ms_dir,"/figs1b.boxplot_groundglass_signif_",ms_date,".pdf"),paper = "a4",width = 4,height = 3)
+
+# cols.num <- c("Age","Opacity","OpacityScore","AvgGroundglass","AvgReticular","AvgnormalLung","VC","VC_percent","FEV1","FEV1_percent.y","TLC_percent.y","TLC","DLCO_percent.y","pO2.y","pCO2.y")
+
+cols.num <- c("Opacity","AvgGroundglass","AvgReticular","AvgnormalLung")
+plot_lable = c("Opacity (%)","Ground glass (%)","Reticular (%)","Normal lung (%)")
+
+for(i in c(1:length(cols.num))){
+
+test = pnt_stage[!is.na(pnt_stage[,cols.num[i]]),]
+
+test = test[,c("identifier",cols.num[i],"stage")]
+colnames(test) = c("identifier","para","stage")
+
+test$stage = factor(test$stage,levels = c("Advanced-IPF","Early-IPF","Control"))
+
+    
+    
+    if(i==1){
+      my_comparisons <- list( 
+  # c("Control","Early-IPF"),
+  # c("Control","Advanced-IPF")
+  # c("Early-IPF","Advanced-IPF")
+                        )
+    }else{
+      my_comparisons <- list( 
+  # c("Control","Early-IPF"),
+  # c("Control","Advanced-IPF")
+  c("Early-IPF","Advanced-IPF")
+                        )
+    }
+
+test$para = as.numeric(test$para)
+
+p =  test  %>%
+  ggplot(.,aes(x=stage,y=as.numeric(para),color=stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=4)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.7)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = FALSE)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = stage_color)+
+  theme_classic()+
+  scale_y_continuous(position = "right",limits = c(0,max(test$para)*1.1))+
+  # ylab(label = paste0("Ground glass (%)"))+
+  ylab(label = plot_lable[i])+
+  xlab("")+
+  coord_flip()+
+   theme(axis.text.x = element_text(size = 8,colour = "black"),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_text(size = 8,colour = "black"),
+         legend.position = "NULL")
+
+ plot_list[[i]] = p
+}
+
+ggpubr::ggarrange(plotlist = plot_list,ncol = 2,nrow = 2)
+
+dev.off()
+ggpubr::ggarrange(plotlist = plot_list,ncol = 2,nrow = 2)
+rm(pnt_stage,cols.num,i,test,my_comparisons,p,plot_list)
+```
+
+## figure S1D
+
+```{r}
+facs_major = readxl::read_xls(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/230523JTanalysis_backup5.wsp_major_counts.xls"),sheet = "Sheet0") 
+
+colnames(facs_major) = c("file","identifier","immune","myeloid","single")
+
+## add stage information
+pnt_stage = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/20230605_scaledvalue_patient_stages.csv"))
+
+facs_major = merge(facs_major,pnt_stage[,c("identifier","stage")],by.x = "identifier",by.y="identifier")
+
+facs_major$immune_percent = facs_major$immune/facs_major$single
+facs_major$myeloid_percent = facs_major$myeloid/facs_major$single
+facs_major$nonimmune_percent = (facs_major$single - facs_major$immune) / facs_major$single
+facs_major$adaptive_percent = (facs_major$immune - facs_major$myeloid) / facs_major$single
+
+facs_major_tmp = facs_major[facs_major$stage %in% c("Control","Early-IPF","Advanced-IPF"),c("identifier","stage","myeloid_percent","adaptive_percent","nonimmune_percent")] %>% 
+  tidyr::pivot_longer(cols = c("myeloid_percent","adaptive_percent","nonimmune_percent"),names_to = "Cell",values_to = "value")
+
+facs_major_tmp$stage = factor(facs_major_tmp$stage,levels = c("Control","Early-IPF","Advanced-IPF"))
+
+group_color = c("adaptive_percent" = "#C2AACB",
+                "myeloid_percent" = "#8DD3C7",
+                "nonimmune_percent" = "#6C79D4")
+
+pdf(file = paste0(ms_dir,"/figs1d_facs_majorcount_",ms_date,".pdf"),paper = "a4",width = 6.5,height = 2)
+p = ggplot(facs_major_tmp,aes(x=identifier,y=value,fill=Cell))+
+  geom_bar(position = "stack",stat = "identity")+
+  # geom_text(position = position_dodge(width = 1),aes(x=stage,y=0))+
+  ylab("Frequency")+
+  xlab("")+
+  facet_grid(~stage,scales = "free_x",space="free_x",switch = "x")+
+  scale_fill_manual(values = group_color,name="",labels=c("B/T/NK cell","Myeloid cell","Non-immune cell"))+
+  # scale_fill_discrete(name="Cell type",labels=c("B/T/NK cell","Myeloid cell","Non-immune cell"))+
+  theme_classic()+theme(axis.text.x = element_blank(),
+         axis.ticks.x = element_blank(),
+         axis.line = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         # axis.title.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_text(size = 10,colour = "black"),
+         title = element_text(size = 7,colour = "black"),
+         plot.title = element_text(hjust=0.5),
+         panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        strip.background = element_rect(color = "white"),
+        legend.text = element_text(size = 6,colour = "black"),
+        legend.key.size = unit(0.3,"cm"),
+        panel.spacing.x = unit(0.1,"lines"),
+        legend.box.margin = margin(-20,-20,-20,-11))
+plot(p)
+dev.off()
+p
+rm(facs_major,pnt_stage,facs_major_tmp,group_color,p)
+```
+
+
+## figure S1E
+
+### upload facs data
+
+```{r}
+facs_data = readxl::read_xlsx(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/fig1DE_20230525_v1.xlsx"),sheet = "Sheet1")
+
+facs_data = facs_data[,c("patient","CD169- CD206-","preDC","CD169+ CD206+","DC1","pDC","DC2","Eosinophils","CD16+ Gran","CD16- Gran","DiseaseGroup")]
+
+colnames(facs_data) = c("patient","CD169-CD206-","preDC","CD169+CD206+","DC1","pDC","DC2","Eosinophil","CD16+Granulocyte","CD16-Granulocyte","disease")
+
+## add stage information
+pnt_stage = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/20230605_scaledvalue_patient_stages.csv"))
+
+facs_data = merge(facs_data,pnt_stage[,c("identifier","stage")],by.x="patient",by.y="identifier")
+
+rm(pnt_stage)
+
+```
+
+### per disease
+
+```{r}
+plot_list = list()
+# install.packages("ggbreak")
+
+pdf(file = paste0(ms_dir,"/figs1e_facs_",ms_date,".pdf"),paper = "a4",width = 7,height = 3)
+
+cell_type_label = c(expression(CD169^"-"~CD206^"-"),expression(CD169^"+"~CD206^"+"),"Eosinophil",expression(CD16^"+"~Granulocyte),expression(CD16^"-"~Granulocyte),"pDC","DC1","DC2","preDC")
+cell_type = c("CD169-CD206-","CD169+CD206+","Eosinophil","CD16+Granulocyte","CD16-Granulocyte","pDC","DC1","DC2","preDC")
+
+
+for(i in c(1:length(cell_type))){
+  
+  tmp_data = facs_data[facs_data$stage %in% c("Control","Early-IPF","Advanced-IPF"),c("patient",cell_type[i],"stage")]
+  colnames(tmp_data) = c("patient","para","Stage")
+  
+  tmp_data$Stage = factor(tmp_data$Stage,levels = c("Control","Early-IPF","Advanced-IPF"))
+  
+  if(i == 3| i == 7){
+    my_comparisons <- list( 
+  # c("Control","Early-IPF"),
+  c("Control","Advanced-IPF")
+  # c("Early-IPF","Advanced-IPF")
+                        )
+  }else{
+    my_comparisons <- list( 
+  # c("Control","Early-IPF"),
+  # c("Control","Advanced-IPF"),
+  # c("Early-IPF","Advanced-IPF")
+                        )
+  }
+
+  if(i==1){
+    p =  tmp_data  %>%
+  ggplot(.,aes(x=Stage,y=as.numeric(para),color=Stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=6)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.9)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  # ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = stage_color)+
+  theme_classic()+
+  scale_y_continuous(trans = "log10")+
+  # ylim(c(0,max(tmp_data$para)*1.1 ))+
+  # ggbreak::scale_y_break(c(2.5,12))+
+  # ylab(label = paste0("Out of all cells (%)"))+
+  labs(title = cell_type_label[i])+
+  xlab("")+
+  # coord_flip()+
+   theme(axis.text.x = element_blank(),
+         axis.ticks.x = element_blank(),
+         axis.line = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         # axis.title.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_blank(),
+         title = element_text(size = 7,colour = "black"),
+         plot.title = element_text(hjust=0.5),
+         panel.border = element_rect(color = "black",size=0.8,fill = NA),
+         legend.position = "NULL")
+  }else{
+    p =  tmp_data  %>%
+  ggplot(.,aes(x=Stage,y=as.numeric(para),color=Stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=6)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.9)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = stage_color)+
+  theme_classic()+
+  ylim(c(0,max(tmp_data$para)*1.1 ))+
+  # scale_y_continuous(position = "right")+
+  # ylab(label = paste0("Out of all cells (%)"))+
+  labs(title = cell_type_label[i])+
+  xlab("")+
+  # coord_flip()+
+   theme(axis.text.x = element_blank(),
+         axis.ticks.x = element_blank(),
+         axis.line = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         # axis.title.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_blank(),
+         title = element_text(size = 7,colour = "black"),
+         plot.title = element_text(hjust=0.5),
+         panel.border = element_rect(color = "black",size=0.8,fill = NA),
+         legend.position = "NULL")
+  }
+
+
+plot_list[[cell_type[i]]] = p
+}
+
+p = tmp_data  %>%
+  ggplot(.,aes(x=Stage,y=as.numeric(para),color=Stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=4)+
+  scale_color_manual(values = stage_color)+
+   theme(axis.text.x = element_blank(),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_text(size = 8,colour = "black"),
+         title = element_text(size = 6,colour = "black"),
+         plot.title = element_text(hjust=0.5),
+         panel.border = element_rect(color = "black",size=1,fill = NA),
+         legend.text = element_text(size = 6,colour = "black"))
+
+plot_list[["legend"]] = cowplot::get_legend(p) %>% cowplot::plot_grid()
+
+p = ggpubr::ggarrange(plotlist = plot_list,ncol = 5,nrow = 2)
+
+ggpubr::annotate_figure(p,left = textGrob(expression("%"~of~Lin^"-"~CD45^"+"~cells), rot = 90, vjust=1,gp=gpar(cex=0.8)))
+
+dev.off()
+ggpubr::annotate_figure(p,left = textGrob(expression("%"~of~Lin^"-"~CD45^"+"~cells), rot = 90, vjust=1,gp=gpar(cex=0.8)))
+rm(plot_list,i,p,tmp_data,my_comparisons,cell_type,cell_type_label)
+```
+
+# session info
+
+```{r,results='asis'}
+sessionInfo()
+```
+
+
+

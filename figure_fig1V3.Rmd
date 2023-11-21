@@ -1,0 +1,590 @@
+---
+title: "IPF_paper_figure1"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+# general settings
+
+```{r}
+library(magrittr)
+library(ComplexHeatmap)
+library(ggplot2)
+
+working.dir = "/home/jyu/rstudio/"
+
+ms_dir = paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures")
+ms_date = "20230921"
+
+```
+
+## color
+
+```{r}
+stage_color = c("Control" = "grey",
+                "Early-IPF" = "#076B94",
+                "Advanced-IPF" = "#C6A775")
+```
+
+
+# 20221017 clustering analysis of pulmonary function parameters
+
+take following parameters: age, VC%, FEV1%, FVC%, DLCO%, TLC%
+
+```{r}
+input = readxl::read_xlsx(path = paste0(working.dir,"/IPF_manuscript/meta_data/prevalent_all_incident.xlsx"),sheet = "Sheet1")
+
+input$medication_group = ifelse(input$medication == "no", "no", "yes")
+
+# only focus on IPF patients and controls
+input = input[input$Dx %in% c("IPF","Control"),]
+
+input$genderNum = ifelse(input$Gender == "female", 0, 1)
+input$smokingNum = ifelse(input$smoking == "nd",0,
+                                ifelse(input$smoking == "ex",1,
+                                       ifelse(input$smoking == "yes",2,3)))
+
+input=input[!is.na(input$identifier),]
+
+rownames(input) = input$identifier
+
+library(Amelia)
+
+# remove prevalent 2 patients which have no data for lung function parameters
+input = input[!rownames(input) %in% c("IPF4","IPF2718174"),]
+input[input=="nd"] = NA
+
+## integrate FVC and VC information
+input$FVCorVC_percent = ifelse(is.na(input$FVC_percent),input$VC_percent,input$FVC_percent)
+
+
+```
+## select lung function para
+
+```{r}
+# input$FVCorVC_percent = ifelse(is.na(input$FVC_percent),input$VC_percent,input$FVC_percent)
+# # cols.num <- c("Age","FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+# cols.num <- c("FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+# 
+# # test = subset(input,cohort=="prevalent")
+# test = input[,cols.num]
+# test <- sapply(test,as.numeric)
+# 
+# 
+# # library("PerformanceAnalytics")
+# # chart.Correlation(test, histogram=TRUE, pch=19)
+# 
+# rm(test)
+```
+
+### impute data
+
+```{r}
+# cols.num <- c("Age","FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+# 
+# 
+# test = input[,cols.num]
+# test <- sapply(test,as.numeric)
+# rownames(test) = input$identifier
+# # rownames(test) = paste0("group",tmp_data$group,"_",rownames(tmp_data))
+# impute_data = amelia(as.data.frame(test),m = 5,parallel = "multicore")
+# impute_cluster = dist(scale(impute_data$imputations$imp5)) %>% hclust()
+# # write.csv(impute_data$imputations$imp1,file = paste0(working.dir,"/clinical_phenotype/20221205_imputed_data_7parameters.csv"))
+# rm(test)
+```
+
+### clustering
+
+```{r, fig.width=8, fig.height=12}
+impute_data = read.csv(file = paste0(working.dir,"/IPF_manuscript/meta_data/20221205_imputed_data_7parameters.csv"),row.names = 1)
+cols.num <- c("FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")
+
+impute_data = impute_data[,cols.num]
+
+impute_cluster = dist(scale(impute_data)) %>% hclust()
+
+# plot(impute_cluster)
+# 
+p = ComplexHeatmap::Heatmap(scale(impute_data),
+                            clustering_distance_rows = "euclidean",
+                            clustering_distance_columns = "euclidean")
+
+# p
+```
+
+### save cluster information
+
+it contains scaled values for all parameters
+
+```{r}
+p_matrix = p@matrix
+
+p_order = ComplexHeatmap::row_order(p)
+
+test = p_matrix[p_order,]
+
+# write.csv(test,file = paste0(working.dir,"/20230605_scaledvalue_patient_stages.csv"))
+
+rm(test,p,p_order,p_matrix,impute_cluster,impute_data,cols.num)
+```
+
+# figure 1
+
+## figure 1B
+
+split groups in cluster1
+
+```{r}
+impute_data1 = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/20230605_scaledvalue_patient_stages.csv"))
+impute_data = impute_data1[,c("FVCorVC_percent","FEV1_percent","TLC_percent","DLCO_percent","pO2","pCO2")]
+colnames(impute_data) = c("FVC","FEV1","TLC","DLCO","pO2","pCO2")
+
+impute_data = sapply(impute_data,as.numeric)
+rownames(impute_data) = rownames(impute_data1)
+
+pnt_stage = impute_data1[,c("identifier","stage","diagnosis","death")]
+
+pnt_stage$stage = factor(pnt_stage$stage,levels = c("Control","Early-IPF","Advanced-IPF"))
+
+row_ha = ComplexHeatmap::columnAnnotation(Diagnosis = pnt_stage$diagnosis,
+                                          # Death = pnt_stage$death,
+                                          Group = pnt_stage$stage,
+                                       col=list(Diagnosis = c("Control" = "grey","IPF" = "#A1756D"),
+                                                # Death = c("yes" = "black", "no" = "white","nd"="grey"),
+                                                # Group = c("Control/early-IPF" = "#076B94","Advanced-IPF" = "#C6A775")),
+                                                Group = stage_color
+                                                ),
+                                       annotation_name_side = "left",annotation_name_gp = gpar(fontsize=8),
+                                       annotation_legend_param = list(title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8))
+                                       )
+
+lgd = ComplexHeatmap::Legend(col_fun = circlize::colorRamp2(c(-4,0,4),c("lightblue","white","red")), 
+                             title = "Scaled value", 
+                             at = c(-4,-2,0,2,4),
+                             direction = "horizontal",
+                             title_position = "lefttop",
+                             title_gp = gpar(fontsize=8),
+                             legend_gp = gpar(fontsize=8),
+                             labels_gp = gpar(fontsize=8)
+                             )
+
+pdf(file = paste0(ms_dir,"/fig1b.para.heatmap_",ms_date,"V3.pdf"),paper = "a4",width = 6,height = 4)
+
+grid.newpage
+# pushViewport(viewport(layout = grid.layout(nr=2,nc=1)))
+
+pushViewport(viewport(x=0.5,y=0.6,width = 0.7,height = 0.6))
+draw(ComplexHeatmap::Heatmap(t(impute_data),
+                             row_names_gp = gpar(fontsize=8),
+                        clustering_distance_rows = "euclidean",
+                        clustering_distance_columns = "euclidean",
+                        name = "Scaled value",
+                        cluster_rows = FALSE,
+                        cluster_columns = TRUE,
+                        top_annotation = row_ha,
+                        show_heatmap_legend = FALSE,
+                        column_title_side = "top",
+                        row_names_side = "left",
+                        show_column_names = FALSE,
+                        col = colorRampPalette(c("lightblue","white","red"))(200)),
+     newpage = FALSE
+)
+upViewport()
+
+pushViewport(viewport(x=0.5,y=0.25,width = 0.5,height = 0.5))
+# par(mar=c(1,0,0,1))
+grid.draw(lgd)
+upViewport()
+
+dev.off()
+
+draw(ComplexHeatmap::Heatmap(t(impute_data),
+                             row_names_gp = gpar(fontsize=8),
+                        clustering_distance_rows = "euclidean",
+                        clustering_distance_columns = "euclidean",
+                        name = "Scaled value",
+                        cluster_rows = FALSE,
+                        cluster_columns = TRUE,
+                        top_annotation = row_ha,
+                        show_heatmap_legend = FALSE,
+                        column_title_side = "top",
+                        row_names_side = "left",
+                        show_column_names = FALSE,
+                        col = colorRampPalette(c("lightblue","white","red"))(200)),
+     newpage = FALSE
+)
+
+rm(pnt_stage, impute_data, row_ha,lgd)
+```
+
+## figure 1C
+
+```{r}
+pnt_stage = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/20230605_scaledvalue_patient_stages.csv"))
+
+pnt_stage = merge(pnt_stage,input,by.x="identifier",by.y="identifier")
+
+
+pdf(file = paste0(ms_dir,"/fig1c.boxplotFEV1_signif_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 1)
+
+cols.num <- c("Age.y","Opacity","OpacityScore","AvgGroundglass","AvgReticular","AvgnormalLung","VC","VC_percent","FEV1","FEV1_percent.y","TLC_percent.y","TLC","DLCO_percent.y","pO2.y","pCO2.y")
+
+# for(i in cols.num){
+i = "FEV1_percent.y"
+test = pnt_stage[!is.na(pnt_stage[,i]),]
+
+test = test[,c("identifier",i,"stage")]
+colnames(test) = c("identifier","para","stage")
+
+test$stage = factor(test$stage,levels = c("Advanced-IPF","Early-IPF","Control"))
+
+my_comparisons <- list( 
+  # c("Control","Early-IPF"),
+  c("Control","Advanced-IPF"),
+  c("Early-IPF","Advanced-IPF")
+                        )
+
+
+p =  test  %>%
+  ggplot(.,aes(x=stage,y=as.numeric(para),color=stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=4)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.7)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = stage_color)+
+  theme_classic()+
+  ylim(c(0,230))+
+  scale_y_continuous(position = "right")+
+  ylab(label = paste0("FEV1 predicted value (%)"))+
+  xlab("")+
+  coord_flip()+
+   theme(axis.text.x = element_text(size = 8,colour = "black"),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_text(size = 8,colour = "black"),
+         title = element_text(size = 8,colour = "black"),
+         legend.position = "NULL")
+
+print(p)
+# }
+
+dev.off()
+
+p
+
+rm(pnt_stage,cols.num,i,test,my_comparisons,p)
+```
+
+## figure 1D
+
+```{r}
+pnt_stage = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/20230605_scaledvalue_patient_stages.csv"))
+
+pnt_stage = merge(pnt_stage,input,by.x="identifier",by.y="identifier")
+
+
+pdf(file = paste0(ms_dir,"/fig1d.boxplotDLCO_",ms_date,".pdf"),paper = "a4",width = 2.5,height = 1)
+
+cols.num <- c("Age.y","Opacity","OpacityScore","AvgGroundglass","AvgReticular","AvgnormalLung","VC","VC_percent","FEV1","FEV1_percent.y","TLC_percent.y","TLC","DLCO_percent.y","pO2.y","pCO2.y")
+# for(i in cols.num){
+i = "DLCO_percent.y"
+test = pnt_stage[!is.na(pnt_stage[,i]),]
+
+test = test[,c("identifier",i,"stage")]
+colnames(test) = c("identifier","para","stage")
+
+test$stage = factor(test$stage,levels = c("Advanced-IPF","Early-IPF","Control"))
+
+my_comparisons <- list( 
+  c("Control","Early-IPF"),
+  c("Control","Advanced-IPF"),
+  c("Early-IPF","Advanced-IPF")
+                        )
+
+
+p =  test  %>%
+  ggplot(.,aes(x=stage,y=as.numeric(para),color=stage))+
+  geom_boxplot(outlier.shape=NA,outlier.size=4)+
+  geom_dotplot(aes(y=as.numeric(para)),fill="white",binaxis='y', stackdir='center', dotsize=0.7)+
+  # ggpubr::stat_compare_means(aes(label = ..p.format..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE)+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "t.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  scale_color_manual(values = stage_color)+
+  theme_classic()+
+  ylim(c(0,230))+
+  scale_y_continuous(position = "right")+
+  ylab(label = paste0("DLco predicted value (%)"))+
+  xlab("")+
+  coord_flip()+
+   theme(axis.text.x = element_text(size = 8,colour = "black"),
+         axis.text.y = element_text(size = 8,colour = "black"),
+         axis.title.y = element_text(size = 8,colour = "black"),
+         title = element_text(size = 8,colour = "black"),
+         legend.position = "NULL")
+
+print(p)
+# }
+
+dev.off()
+
+p
+
+rm(pnt_stage,cols.num,i,test,my_comparisons,p)
+```
+## figure 1F
+
+### load seurat object
+
+```{r}
+library(Seurat)
+ipf_seu = readRDS(file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720.rds"))
+
+ipf_seu$IPFgroup = factor(ipf_seu$IPFgroup,levels = c("Control","Early-IPF","Advanced-IPF"))
+
+## export tables4
+# 
+# tmpdata = table(ipf_seu$pnt_in_paper,ipf_seu$subcluster)
+# tmpdata1 = as.matrix.data.frame(tmpdata)
+# rownames(tmpdata1) = rownames(tmpdata)
+# colnames(tmpdata1) = colnames(tmpdata)
+# 
+# write.csv(tmpdata1,paste0(working.dir,"/IPF_manuscript/manuscript/tables4.csv"))
+# 
+# rm(tmpdata,tmpdata1)
+```
+
+### plot
+
+```{r}
+Idents(ipf_seu) = "subcluster"
+
+ipf_seu = RenameIdents(ipf_seu,
+                          "0" = "Macrophage",
+                             "4_0" = "Macrophage",
+                             "4_1" = "Macrophage",
+                             "4_2" = "Macrophage",
+                             "5" = "T/NK cell",
+                             "6" = "Macrophage",
+                             "7" = "Macrophage",
+                             "8" = "Macrophage",
+                             "9" = "T/NK cell",
+                             "10" = "Macrophage",
+                             "11" = "Macrophage",
+                             "12" = "Neutrophil",
+                             "13" = "Macrophage",
+                             "14" = "T/NK cell",
+                             "15" = "Epithelial cell",
+                             "16" = "Epithelial cell",
+                             "17" = "DC",
+                             "19" = "DC",
+                             "20" = "Macrophage",
+                             "21" = "Mast cell",
+                             "22" = "Eosinophil",
+                             "24" = "Epithelial cell")
+
+
+
+seurat_cluster_color =  c("Macrophage" = "#8DD3C7",
+                             "DC" = "#E9967A",
+                             "Neutrophil" = "#7B68EE",
+                             "Eosinophil" = "purple",
+                             "Mast cell" = "red",
+                             "T/NK cell" = "green",
+                             "Epithelial cell" = "black")
+
+pdf(file = paste0(ms_dir,"/fig1f_major_umap_",ms_date,".pdf"),paper = "a4",width = 3.2,height = 2.5 )
+
+p = DimPlot(ipf_seu,dims = c(1,3),
+        # group.by = "subcluster",
+        cols = seurat_cluster_color,
+        raster = TRUE,repel = TRUE,raster.dpi = c(1024,1024),pt.size = 3,
+        label = FALSE,label.size = 3)+
+  # ggrepel::geom_label_repel(box.padding = 0.5, max.overlaps = Inf)+
+  labs(title = "All cells (n=68,886)")+
+  theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_text(size=7),
+        plot.title = element_text(hjust=0.5,face = "plain",size = 8),
+        panel.border = element_rect(color = "black",size=0.3,fill = NA),
+        # legend.position = "none")
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.text.align = 0,
+        legend.key.size = unit(0.5,"cm"),
+        legend.title = element_text(size = 8),
+        legend.box.margin = margin(0,0,0,-11))
+plot(p)
+dev.off()
+p
+rm(p)
+```
+
+## figure 1G
+
+### load seurat object
+
+```{r}
+# Idents(ipf_seu) = "seurat_clusters"
+# ipf_seu_mac = subset(ipf_seu,idents = c(0,4,6,7,8,10,11,13,20)) 
+# ipf_seu_mac <- RunUMAP(ipf_seu_mac,
+#                             reduction = "pca",
+#                             dims = 1:30,
+#                             n.neighbors = 30,
+#                             min.dist = 0.000001,
+#                             n.components = 3,
+#                             a = 1,
+#                             b = 0.9,
+#                             spread = 4)
+# 
+# DimPlot(ipf_seu_mac,dims = c(2,3))
+# 
+# saveRDS(ipf_seu_mac, file = paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac.rds"))
+ipf_seu_mac = readRDS(file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac.rds"))
+
+Idents(ipf_seu_mac) = "subcluster"
+
+##use same colors for cluster 7, 13, 20
+mac_color = c("0" = "#344e41",
+                             "4_0" = "#FF1493",
+                         "4_1" = "#48cae4",
+                         "4_2" = "#ffafcc",
+                             "6" = "#BDE4C8",
+                             "7" = "#6a994e",
+                             "8" = "#73BCEB",
+                             "10" = "#00b4d8",
+                             "11" = "#467599",
+                             "13" = "#6a994e",
+                             "20" = "#6a994e")
+
+
+mac_label = c("0" = expression(Alveolar*"-"*M*phi1*(0)),
+                             "4_0" = "Monocyte(4_0)",
+                             "4_1" = expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+                             "4_2" = expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+                             "6" = expression(S100A11^"+"*M*phi1*(6)),
+                             "7" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "8" = expression(CXCL10^"+"*M*phi1*(8)),
+                             "10" = expression(TNFAIP6^"+"*M*phi1*(10)),
+                             "11" = expression(NEAT1^"+"*M*phi1*(11)),
+                             "13" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)),
+                             "20" = expression(MKI67^"+"*M*phi1*(7*","*13*","*20)))
+
+```
+
+### plot
+
+```{r}
+pdf(file = paste0(ms_dir,"/fig1g_mac_umap_",ms_date,".pdf"),paper = "a4",width = 4,height = 2.5 )
+
+p = DimPlot(ipf_seu_mac,
+        dims = c(2,3),
+        group.by = "subcluster",
+        # split.by = "major",
+        # cols = color_majorcelltype,
+        cols = mac_color,
+        # ncol = 3,
+        # shuffle = TRUE,
+        raster = TRUE,
+        raster.dpi = c(2048,2048),
+        label = TRUE,
+        repel = TRUE,
+        pt.size = 3,
+        label.size = 3.5)+
+  labs(title = "Macrophage (n=54,360)")+
+  # geom_text(data=data.frame(),aes(label = "56,627 cells",x=-Inf,y=Inf),hjust=-0.1,vjust=19,size=3)+
+
+      theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_text(size=8),
+        plot.title = element_text(hjust=0.5,face = "plain",size = 8),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.text.align = 0,
+        legend.key.size = unit(0.5,"cm"),
+        legend.title = element_text(size = 8)
+          # legend.text = element_text(size = 20),
+          # legend.key.size  = unit(1.3,"cm")
+        )+
+  scale_color_manual(name = "Cluster",
+                     labels = mac_label[1:9],
+                     values = mac_color[1:9])
+
+plot(p)
+dev.off()
+
+p
+rm(p)
+```
+
+## figure 1H
+
+add AM degs into the figure
+```{r}
+library(tidyverse)
+# run1to4_ck_ipf_n_copd_ck_deg_subcluster = FindAllMarkers(ipf_seu_mac)
+# write.csv(run1to4_ck_ipf_n_copd_ck_deg_subcluster,file = paste0(working.dir,"/IPF_manuscript/meta_data/ILD_combined_sct_rpca20230720_mac_subcluster_deg.csv"))
+
+run1to4_ck_ipf_n_copd_ck_deg_subcluster = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/ILD_combined_sct_rpca20230720_mac_subcluster_deg.csv"))
+tmp_genes = run1to4_ck_ipf_n_copd_ck_deg_subcluster %>% subset(.,avg_log2FC > 0.5) %>% group_by(cluster) %>% top_n(n = 5, wt = avg_log2FC)
+tmp_genes = tmp_genes[tmp_genes$cluster %in% c(0,"4_0","4_1","4_2",6,8,10,11,13),]
+
+tmp_genes = tmp_genes[order(tmp_genes$avg_log2FC,decreasing = TRUE),]
+
+tmp_genes$cluster = factor(tmp_genes$cluster,levels = c(0,"4_0","4_1","4_2",6,8,10,11,13) )
+tmp_genes = tmp_genes[order(tmp_genes$cluster,decreasing = FALSE),]
+tmp_genes = c(unique(tmp_genes$gene))
+
+ipf_seu_mac$subcluster1 = ifelse(ipf_seu_mac$subcluster %in% c(13,20),"7",as.character(ipf_seu_mac$subcluster))
+ipf_seu_mac$subcluster1 = factor(ipf_seu_mac$subcluster1,levels = c(0,"4_0","4_1","4_2",6,8,10,11,7))
+
+pdf(file = paste0(ms_dir,"/fig1h_mac_deg_",ms_date,".pdf"),paper = "a4",width = 7,height = 3 )
+
+## add mac genes
+tmp_genes = c("FABP4","MARCO","PPARG","FTL",tmp_genes) %>% unique()
+
+p = DotPlot(ipf_seu_mac,features = tmp_genes,
+        group.by = "subcluster1",assay = "RNA",scale = TRUE)
+
+ggplot(p$data,aes(x=features.plot,y=id))+
+  geom_point(aes(size=pct.exp,color=avg.exp.scaled))+
+  scale_y_discrete(labels = mac_label)+
+  scale_color_gradientn(colours  = c("#a8dadc","white","#9d0208"))+
+  # coord_flip()+
+  xlab("")+
+  ylab("")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.text = element_text(size = 8),
+        axis.line = element_blank(),
+        # axis.ticks.y = element_blank(),
+        # axis.text.y = element_blank(),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.position = "right",
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.title = element_text(size = 8,colour = "black"),
+        legend.box = "vertical",
+        legend.box.margin = margin(-20,-20,-20,-11))+
+  guides(size = guide_legend(order = 2,title = "% of exp. cells"),
+         color = guide_colorbar(order = 2,title = "Gene expression",barwidth = 0.5,barheight = 3))
+
+plot(p)
+dev.off()
+p
+rm(tmp_genes,p)
+```
+
+
+# session
+
+```{r,results='asis'}
+sessionInfo()
+```
+
+

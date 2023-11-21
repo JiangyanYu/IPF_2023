@@ -1,0 +1,521 @@
+---
+title: "IPF figures"
+author: "Jiangyan Yu (jiangyan.yu@uni-bonn.de)"
+date: "`r Sys.Date()`"
+output:
+  html_document: 
+    code_folding: hide
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_float: yes
+  pdf_document:
+    toc: yes
+---
+
+# general settings
+
+
+## load library
+
+```{r include=FALSE}
+# rm(list=ls())
+gc()
+#CRAN packages
+list.of.packages <- c("readr",
+                      "cowplot",
+                      "useful",
+                      "Seurat",
+                      "stringr",
+                      "umap",
+                      "ggplot2",
+                      "reshape2",
+                      "dplyr",
+                      "tidyr",
+                      "Matrix.utils",
+                      "VGAM",
+                      "plotly",
+                      "future",
+                      "data.table",
+                      "DescTools"
+)
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)>0) install.packages(new.packages)
+
+#BioconductoR packages
+list.of.bioc.packages <- c(
+  # "tximport",
+                           # "DESeq2",
+                           # "Seurat",
+                           # "slingshot",
+                           # "flowCore",
+                           "biomaRt",
+                           "clusterProfiler",
+                           "org.Hs.eg.db",
+                           "org.Mm.eg.db",
+                           # "destiny",
+                           # "GSEABase",
+                           "DOSE"
+                           # "BiocGenerics",
+                           # "DelayedArray",
+                           # "DelayedMatrixStats",
+                           # "limma",
+                           # "S4Vectors",
+                           # "SingleCellExperiment",
+                           # "SummarizedExperiment",
+                           # "batchelor")
+                           # "annotables")
+)
+new.packages.bioc <- list.of.bioc.packages[!(list.of.bioc.packages %in% installed.packages()[,"Package"])]
+# 
+if(length(new.packages.bioc)>0)if (!requireNamespace("BiocManager")) install.packages("BiocManager")
+BiocManager::install(new.packages.bioc, update = FALSE)
+
+lapply(c(list.of.packages,list.of.bioc.packages), require, character.only = TRUE)
+
+rm(list.of.bioc.packages,list.of.packages,new.packages,new.packages.bioc)
+```
+
+## working directory
+
+```{r}
+
+
+working.dir = "/home/jyu/rstudio/"
+
+ms_dir = paste0(working.dir,"/IPF_manuscript/manuscriptV3/figures")
+ms_date = "20230720"
+
+rm(load_packages)
+```
+
+
+# figure S5B split integrated umap by dataset
+
+
+## load saved object
+
+```{r}
+ipf_lung = readRDS(paste0(working.dir,"/IPF_manuscript/data/lung_IPF_4datasets_mac_rpca.rds"))
+
+ipf_lung$dataset = ifelse(ipf_lung$dataset == "Adam", "Adams", ipf_lung$dataset)
+ipf_lung$dataset = ifelse(ipf_lung$dataset == "Yu", "Present study", ipf_lung$dataset)
+
+# write.csv(cbind(ipf_lung@meta.data,ipf_lung@reductions$umap@cell.embeddings),file = paste0(working.dir,"ipf_lung_4datasets.meta.csv"))
+
+
+```
+
+## umap
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs5b.inteUMAP.split.by.dataset_",ms_date,".pdf"),width =  12,height = 3)
+
+p = DimPlot(ipf_lung,dims = c(1,2),split.by = "dataset",label = TRUE,raster = FALSE,pt.size = 0.2,label.size = 3,cols =colorRampPalette(RColorBrewer::brewer.pal(n=11,name = "Set3"))(18),ncol = 4)+
+  theme(legend.position = "NULL",
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_blank())
+
+plot(p)
+
+dev.off()
+
+p
+
+rm(p)
+```
+
+
+# figure S5C SPP1 DEG dot plot
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs5c.inte.cluster3.deg_20230629",".pdf"),paper = "a4",width =  3.5,height = 2)
+p = DotPlot(ipf_lung,features = c("SPP1","CHI3L1","PLA2G7","CHIT1","SDC2","LIPA","APOE","TREM2"),
+        group.by = "seurat_clusters",assay = "RNA",scale = TRUE)
+
+p = ggplot(p$data,aes(x=features.plot,y=id))+
+  geom_point(aes(size=pct.exp,color=avg.exp.scaled))+
+  # scale_y_discrete(labels = mac_label)+
+  scale_color_gradientn(colours  = c("#a8dadc","white","#9d0208"))+
+  coord_flip()+
+  xlab("")+
+  ylab("")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.text = element_text(size = 8),
+        axis.line = element_blank(),
+        # axis.ticks.y = element_blank(),
+        # axis.text.y = element_blank(),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.position = "right",
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.title = element_text(size = 8,colour = "black"),
+        legend.box = "vertical",
+        legend.box.margin = margin(-20,-20,-20,-11))+
+  guides(size = guide_legend(order = 2,title = "% of exp. cells"),
+         color = guide_colorbar(order = 2,title = "Gene expression",barwidth = 0.5,barheight = 3))
+
+plot(p)
+
+dev.off()
+
+p
+rm(p)
+```
+
+
+# figure S5D similarity score
+
+```{r}
+pdf(file = paste0(ms_dir,"/figs5D.Morse.Adams.Ayaub.prediction.score.UMAP_20230629",".pdf"),paper="a4",width =  4,height = 3)
+
+ipf_lung_meta = read.csv(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/ipf_lung_4datasets.meta_similarity_score.csv"))
+ipf_lung_meta$seurat_clusters = as.factor(ipf_lung_meta$seurat_clusters)
+
+p1 = ggplot(ipf_lung_meta,aes(x=seurat_clusters,y=ipfstudyMorse.et.al.1.SPP1..M...IPF1,fill=seurat_clusters))+
+  geom_violin()+
+  scale_fill_manual(values=colorRampPalette(RColorBrewer::brewer.pal(n=11,name = "Set3"))(18))+
+  xlab("")+
+  ylab("Similarity score")+
+  labs(title = expression(SPP1^"hi"*M*phi1*"("*Morse*" "*et*" "*al*")"))+
+  # coord_flip()+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 0, vjust = 0, hjust=0.5,size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_text(size = 8),
+        plot.title = element_text(size = 8,face = "plain"),
+        # plot.title.position = "plot",
+        legend.position = "none")
+  
+p2 = ggplot(ipf_lung_meta,aes(x=seurat_clusters,y=ipfstudyAyaub.et.al.IPFeMp1,fill=seurat_clusters))+
+  geom_violin()+
+  scale_fill_manual(values=colorRampPalette(RColorBrewer::brewer.pal(n=11,name = "Set3"))(18))+
+  xlab("")+
+  ylab("Similarity score")+
+  labs(title = expression(IPFe*M*phi1*"("*Adams/Ayaub*" "*et*" "*al*")"))+
+  # coord_flip()+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 0, vjust = 0, hjust=0.5,size = 8),
+        axis.text.y = element_text(size = 8),
+        axis.title = element_text(size = 8),
+        plot.title = element_text(size = 8,face = "plain"),
+        # plot.title.position = "plot",
+        legend.position = "none")
+
+ggpubr::ggarrange(p1,p2,ncol = 1)
+
+dev.off()
+
+p1
+p2
+
+rm(p1,p2)
+```
+
+# figure S5E
+
+## boxplot of cluster 3 in ck vs ipf
+
+```{r}
+run1to4_ck_ipf_n_copd_ck_singlelive_mac = readRDS(file=paste0(working.dir,"/IPF_manuscript/data/ILD_combined_sct_rpca20230720_mac.rds"))
+ipf_lung_meta = read.csv(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/ipf_lung_4datasets.meta.csv"))
+
+### Haberman
+meta1 = fread(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/GSE135893_IPF_metadata.csv.gz"))
+meta1 = meta1[,c("orig.ident","Sample_Name","Diagnosis")] %>% unique()
+colnames(meta1) = c("Sample","Patient","Diagnosis")
+meta1$dataset = "Haberman"
+
+### morse
+meta2 = read.csv(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/Morse_tables1.csv"))
+meta2 = meta2[,c("Sample","region","Diagonisis")]
+colnames(meta2) = c("Sample","Patient","Diagnosis")
+meta2$dataset = "Morse"
+
+### Adams
+meta3 = fread(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/GSE136831_AllCells.Samples.CellType.MetadataTable.txt"))
+meta3 = meta3[,c("Library_Identity","Subject_Identity","Disease_Identity")] %>% unique()
+colnames(meta3) = c("Sample","Patient","Diagnosis")
+meta3$dataset = "Adams"
+
+###Yu
+meta4 = run1to4_ck_ipf_n_copd_ck_singlelive_mac@meta.data[,c("cell","pnt_in_paper","Disease")] %>% unique()
+meta4$cell = substr(meta4$cell,1,nchar(meta4$cell)-13)
+meta4 = unique(meta4)
+colnames(meta4) = c("Sample","Patient","Diagnosis")
+meta4$dataset = "Yu"
+
+# meta_com = rbind(meta1,meta2,meta3)
+meta_com = rbind(meta1,meta2,meta3,meta4)
+
+# rm(meta1,meta2,meta3)
+
+tmp_data = merge(ipf_lung_meta[,c("orig.ident","seurat_clusters")],meta_com[,c("Sample","Patient")],by.x="orig.ident",by.y="Sample") 
+
+
+ns <- table(sample = tmp_data$Patient, cell_type = paste0("cluster",tmp_data$seurat_clusters))
+fq <- prop.table(ns, 1) * 100
+df <- as.data.frame(fq)
+
+df = merge(df, unique(meta_com[,c("Patient","Diagnosis","dataset")]),by.x="sample",by.y="Patient")
+rm(meta1,meta2,meta3,meta4,meta_com,tmp_data,run1to4_ck_ipf_n_copd_ck_singlelive_mac)
+```
+
+#### plot
+
+```{r}
+df1 = subset(df,cell_type=="cluster3")
+df1$dataset = ifelse(df1$dataset == "Yu", "Present study",df1$dataset)
+
+# stat.test <- df1 %>%
+#   group_by(dataset) %>%
+#   rstatix::t_test(Freq ~ Diagnosis) %>% 
+#   rstatix::adjust_pvalue(method = "BH") %>%
+#   rstatix::add_significance()
+# stat.test 
+# stat.test <- stat.test %>% rstatix::add_xy_position(x = "Diagnosis")
+# stat.test$y.position = stat.test$y.position * 1.5
+
+my_comparisons <- list( c("IPF","Control"))
+
+pdf(file = paste0(ms_dir,"/figs5e.cluster3.boxplot_20230629",".pdf"),paper = "a4",width = 3,height = 3)
+
+p = ggplot(df1,aes(x=Diagnosis,y=Freq,color=Diagnosis))+
+  geom_boxplot(outlier.shape=NA,outlier.size=6)+
+  geom_dotplot(aes(y=as.numeric(Freq)),fill="white",binaxis='y', stackdir='center', dotsize=0.9)+
+  facet_wrap(~dataset,scales = "free",ncol=2)+
+  scale_color_manual(values=c("Control" = "#076B94","IPF" = "#C6A775"))+
+  # ylim(c(0,100))+
+  ylab(expression("%"~of~M*phi1))+
+  ggpubr::stat_compare_means(aes(label = ..p.signif..),comparisons = my_comparisons,method = "wilcox.test",hide.ns = TRUE,bracket.size = 0.5,vjust = 0.6)+
+  # ggpubr::stat_pvalue_manual(stat.test,
+  #                            label = "p.adj.signif",
+  #                            tip.length = 0.01,
+  #                            size = 5,
+  #                            hide.ns = TRUE)+
+
+  theme_classic()+
+  theme(
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text = element_text(size = 8),
+        axis.title.y = element_text(size = 8),
+        plot.title = element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 8),
+        legend.position = "NULL",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 8))
+
+plot(p)
+dev.off()
+p
+
+rm(tmp_data,tmp1,ns,fq,df,stat.test,df1,my_comparisons,p)
+```
+
+# figure S5F
+
+## load saved object
+
+```{r}
+ghent_seu = readRDS(file = paste0(working.dir,"/scRNA_processed/230306_Ghent_COVID_CITEseq_Annotated_spp1predicted.RDS"))
+
+Idents(ghent_seu) = "seurat_clusters"
+
+ghent_seu[["percent.mt"]] = PercentageFeatureSet(ghent_seu,pattern = "MT-",assay = "originalexp")
+
+VlnPlot(ghent_seu,features = "percent.mt",pt.size = 0)
+
+# ghent_seu = RUN
+```
+
+## plot figure
+
+```{r}
+
+DefaultAssay(ghent_seu) = "GEX"
+
+ghent_seu = RunUMAP(ghent_seu,n.components = 3, min.dist = 0.1,dims = 1:50,a = 0.8,b=0.7,reduction = "mnn")
+
+
+pdf(file = paste0(ms_dir,"/figs5f.ghent_cite_umap_",ms_date,".pdf"),paper = "a4",width = 2,height = 2)
+p = DimPlot(ghent_seu,
+        dims = c(1,2),
+        group.by = "seurat_clusters",
+        raster = TRUE,
+        raster.dpi = c(2048,2048),
+        label = TRUE,
+        # repel = TRUE,
+        pt.size = 3,
+        label.size = 2.7)+
+  labs(title = "Monocytes and macrophages\nfrom Bosteels et al")+
+      theme(axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title = element_text(size=8),
+        plot.title = element_text(hjust=0.5,face = "plain",size = 8),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.position = "none"
+        )
+
+plot(p)
+dev.off()
+p
+rm(p)
+```
+
+# figure S5G
+
+```{r}
+tmp_deg = read.csv(paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/ghent_cite_deg_20230629.csv"))
+
+tmp_genes = tmp_deg %>% subset(.,avg_log2FC > 0.5) %>% group_by(cluster) %>% top_n(n = 4, wt = avg_log2FC)
+# tmp_genes = tmp_genes[tmp_genes$cluster %in% c(0,"4_0","4_1","4_2",6,8,10,11,13),]
+
+tmp_genes = tmp_genes[order(tmp_genes$avg_log2FC,decreasing = TRUE),]
+
+tmp_genes$cluster = factor(tmp_genes$cluster,levels = c(0:11) )
+tmp_genes = tmp_genes[order(tmp_genes$cluster,decreasing = FALSE),]
+tmp_genes = c(unique(tmp_genes$gene))
+
+# ipf_seu_mac$subcluster1 = ifelse(ipf_seu_mac$subcluster %in% c(13,20),"7",as.character(ipf_seu_mac$subcluster))
+# ipf_seu_mac$subcluster1 = factor(ipf_seu_mac$subcluster1,levels = c(0,"4_0","4_1","4_2",6,8,10,11,7))
+
+ghent_seu$seurat_clusters = factor(ghent_seu$seurat_clusters,levels = c(0:11))
+pdf(file = paste0(ms_dir,"/figs5g_ghent_deg_",ms_date,".pdf"),paper = "a4",width = 4,height = 4.3)
+p = DotPlot(ghent_seu,features = tmp_genes,
+        group.by = "seurat_clusters",assay = "GEX",scale = TRUE)
+
+p = ggplot(p$data,aes(x=features.plot,y=id))+
+  geom_point(aes(size=pct.exp * 0.01,color=avg.exp.scaled))+
+  # scale_y_discrete(labels = mac_label)+
+  scale_color_gradientn(colours  = c("#a8dadc","white","#9d0208"))+
+  coord_flip()+
+  xlab("")+
+  ylab("")+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.text = element_text(size = 8),
+        axis.line = element_blank(),
+        # axis.ticks.y = element_blank(),
+        # axis.text.y = element_blank(),
+        panel.border = element_rect(color = "black",size=0.8,fill = NA),
+        legend.position = "right",
+        legend.text = element_text(size = 8,colour = "black"),
+        legend.title = element_text(size = 8,colour = "black"),
+        legend.box = "vertical",
+        legend.box.margin = margin(0,0,-10,-10))+
+  guides(size = guide_legend(order = 2,title = "% of exp.\ncells",title.position = "top"),
+         color = guide_colorbar(order = 1,title = "Gene\nexpression",title.position = "top",barwidth = 0.5,barheight = 3))
+
+plot(p)
+
+dev.off()
+
+p
+
+rm(tmp_genes,p,tmp_deg)
+
+```
+
+# figure s5h
+
+```{r}
+library(ComplexHeatmap)
+ghent_seu_predict = read.csv(file = paste0(working.dir,"/IPF_manuscript/manuscriptV3/meta_data/ghent_annotated_by_ipfmac.csv"))
+tmp_prediction = colnames(ghent_seu_predict)[colnames(ghent_seu_predict) %like% "%prediction.score%"]
+
+tmp_data = cbind(ghent_seu_predict$seurat_clusters,ghent_seu_predict[,c(tmp_prediction)])
+
+
+colnames(tmp_data)[1] = "subcluster1"
+tmp_data = tmp_data%>%
+  group_by(subcluster1)%>% 
+  summarise(across(tmp_prediction, mean)) %>% 
+  as.data.frame()
+
+rownames(tmp_data) = tmp_data$subcluster1
+tmp_data = tmp_data[,c(2:(ncol(tmp_data)-1))]
+colnames(tmp_data) = str_replace(colnames(tmp_data),"prediction.score.","")
+
+tmp_data = t(tmp_data) %>% as.data.frame()
+
+
+## organize momac clusters based on origin
+
+tmp_data = tmp_data[c(0,"4_0","4_1","4_2",6,8,10,11,7),c("6","1","10","2","5","0","3","4","9","7","8","11")]
+
+
+pdf(file = paste0(ms_dir,"/figs5h.spp1_prediction_score_onCITEseq",ms_date,".pdf"),paper = "a4",width = 3,height = 2.3)
+
+col_fun = circlize::colorRamp2(c(0,0.25,0.5,0.75, 1), c("lightblue","white","pink","red","#9d0208"))
+
+
+ht1 = ComplexHeatmap::Heatmap(tmp_data,
+                        name = "Prediction score",
+                        col = col_fun,
+                        cluster_rows = FALSE,
+                        cluster_columns = FALSE,
+                        # row_names_side = "left",
+                        show_row_names = FALSE,
+                        column_names_side = "top",
+                        column_title_gp = gpar(fontsize=8),
+                        column_names_gp = gpar(fontsize=8,vjust=1),
+                        column_names_rot = 0,
+                        row_title_gp = gpar(fontsize=8),
+                        # row_names_gp = gpar(fontsize=8),
+                        row_title = "Clusters from present study",
+                        row_title_side = "left",
+                        column_title = "Clusters from Bosteels et al",
+                        # show_heatmap_legend = FALSE,
+                        heatmap_legend_param = list(color_bar = "continuous", legend_direction = "horizontal",
+                                                    title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8),title_position = "lefttop",
+                                                    legend_width = unit(2, "cm"),legend_width = unit(0.5,"cm")),
+                        left_annotation = ComplexHeatmap::rowAnnotation(labels = ComplexHeatmap::anno_text(c(
+    expression(Alveolar*"-"*M*phi1*(0)),
+    expression(Monocyte*(4*"_"*0)),
+    expression(RNASE1^"+"*M*phi1*(4*"_"*1)),
+    expression(SPP1^"+"*M*phi1*(4*"_"*2)),
+    expression(S100A11^"+"*M*phi1*(6)),
+    expression(CXCL10^"+"*M*phi1*(8)),
+    expression(TNFAIP6^"+"*M*phi1*(10)),
+    expression(NEAT1^"+"*M*phi1*(11)),
+    expression(MKI67^"+"*M*phi1*(7*","*13*","*20))
+    ),gp = gpar(fontsize=8),just = "right",location = 1
+    )
+  )
+                        )
+  
+ComplexHeatmap::draw(ht1,
+                     merge_legend=TRUE,
+                        legend_grouping = "original",
+                        heatmap_legend_side = "bottom"
+                     )
+
+# lgd = Legend(title="Prediction score",col_fun = col_fun,direction = "horizontal",grid_width = unit(1,"cm"),title_gp = gpar(fontsize=8),labels_gp = gpar(fontsize=8))
+# 
+# ComplexHeatmap::draw(ht1)
+# ComplexHeatmap::draw(lgd,x=unit(0.2,"npc"),y=unit(0.9,"npc"))
+
+dev.off()
+
+ComplexHeatmap::draw(ht1,
+                     merge_legend=TRUE,
+                        legend_grouping = "original",
+                        heatmap_legend_side = "bottom"
+                     )
+
+rm(tmp_prediction,tmp_data,col_fun,col_ha,ht1,lgd)
+```
+
+
+# session
+
+```{r}
+sessionInfo()
+```
+
